@@ -50,6 +50,7 @@ export default function DayModal({
   const [editingPersonal, setEditingPersonal] = useState(false)
   const [personalTitle, setPersonalTitle] = useState('')
   const [personalNotes, setPersonalNotes] = useState('')
+  const [personalEndDate, setPersonalEndDate] = useState('')
   const [savingPersonal, setSavingPersonal] = useState(false)
   const [confirmDeletePersonal, setConfirmDeletePersonal] = useState(false)
 
@@ -72,8 +73,9 @@ export default function DayModal({
     if (personalEvent) {
       setPersonalTitle(personalEvent.title || '')
       setPersonalNotes(personalEvent.notes || '')
+      setPersonalEndDate(personalEvent.end_date && personalEvent.end_date !== personalEvent.date ? personalEvent.end_date : '')
     } else {
-      setPersonalTitle(''); setPersonalNotes('')
+      setPersonalTitle(''); setPersonalNotes(''); setPersonalEndDate('')
     }
     setEditingPersonal(false)
     setConfirmDeletePersonal(false)
@@ -104,7 +106,7 @@ export default function DayModal({
   async function handleSavePersonalEvent() {
     if (!personalTitle.trim()) return
     setSavingPersonal(true)
-    await onSavePersonalEvent(dateStr, personalTitle.trim(), personalNotes.trim())
+    await onSavePersonalEvent(dateStr, personalEndDate || dateStr, personalTitle.trim(), personalNotes.trim())
     setSavingPersonal(false)
     setEditingPersonal(false)
   }
@@ -334,6 +336,9 @@ export default function DayModal({
                 <div className="rounded-2xl p-4 border bg-purple-500/10 border-purple-400/20">
                   <p className="text-xs font-medium uppercase tracking-widest text-purple-500 mb-1">Personal Event</p>
                   <h3 className="font-display text-2xl tracking-wider text-[#1a1a18] dark:text-[#e8e6e0]">{personalEvent.title}</h3>
+                  {personalEvent.end_date && personalEvent.end_date !== personalEvent.date && (
+                    <p className="text-xs text-[#999] mt-1">{formatDateLabel(personalEvent.date)} — {formatDateLabel(personalEvent.end_date)}</p>
+                  )}
                   {personalEvent.notes && <p className="font-body text-sm text-[#666] dark:text-[#999] mt-2 whitespace-pre-line">{personalEvent.notes}</p>}
                   <p className="text-xs text-[#aaa] mt-2">Only you can see this. Your unavailability is shared with all your groups.</p>
                 </div>
@@ -354,6 +359,14 @@ export default function DayModal({
                       placeholder="Details..." rows={3}
                       className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-white/5 border border-black/10 dark:border-white/10
                         font-body text-sm text-[#1a1a18] dark:text-[#e8e6e0] placeholder-[#aaa] focus:outline-none focus:ring-2 focus:ring-purple-400/50 resize-none" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium uppercase tracking-widest text-[#888] block mb-1.5">
+                      End date <span className="normal-case text-[#aaa]">(leave blank for single day)</span>
+                    </label>
+                    <input type="date" value={personalEndDate} min={dateStr} onChange={e => setPersonalEndDate(e.target.value)}
+                      className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-white/5 border border-black/10 dark:border-white/10
+                        font-body text-[#1a1a18] dark:text-[#e8e6e0] focus:outline-none focus:ring-2 focus:ring-purple-400/50" />
                   </div>
                   <p className="text-xs text-[#aaa] font-body">Details are private. Your unavailability will be visible to all your groups.</p>
                   <div className="flex gap-2">

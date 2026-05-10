@@ -220,24 +220,48 @@ export default function MemberPage() {
     } finally { setToggling(null) }
   }
 
-  async function handleSavePersonalEvent(dateStr, title, notes) {
+  function getDatesInRange(startStr, endStr) {
+    const dates = []
+    const cur = new Date(startStr + 'T00:00:00')
+    const end = new Date((endStr || startStr) + 'T00:00:00')
+    while (cur <= end) { dates.push(formatDate(cur)); cur.setDate(cur.getDate() + 1) }
+    return dates
+  }
+
+  async function handleSavePersonalEvent(dateStr, endDateStr, title, notes) {
     const existing = myPersonalEvents[dateStr]
+    const end_date = endDateStr || dateStr
+
     if (existing) {
+      // Remove old unavailability range before saving new one
+      const oldDates = getDatesInRange(existing.date, existing.end_date || existing.date)
+      const newDates = getDatesInRange(dateStr, end_date)
+      const toRemove = oldDates.filter(d => !newDates.includes(d))
+      for (const d of toRemove) {
+        await supabase.from('user_unavailability').delete().eq('user_id', user.id).eq('date', d)
+      }
       const { data } = await supabase.from('personal_events')
-        .update({ title, notes }).eq('id', existing.id).select().single()
+        .update({ title, notes, end_date }).eq('id', existing.id).select().single()
       if (data) setMyPersonalEvents(prev => ({ ...prev, [dateStr]: data }))
     } else {
       const { data } = await supabase.from('personal_events')
-        .insert({ user_id: user.id, date: dateStr, title, notes }).select().single()
-      if (data) {
-        setMyPersonalEvents(prev => ({ ...prev, [dateStr]: data }))
-        // Also mark as unavailable if not already
-        if (!myUnavailDates.has(dateStr)) {
-          await supabase.from('user_unavailability').insert({ user_id: user.id, date: dateStr })
-          setMyUnavailDates(prev => new Set([...prev, dateStr]))
-        }
+        .insert({ user_id: user.id, date: dateStr, end_date, title, notes }).select().single()
+      if (data) setMyPersonalEvents(prev => ({ ...prev, [dateStr]: data }))
+    }
+
+    // Mark all dates in range as unavailable
+    const dates = getDatesInRange(dateStr, end_date)
+    const newUnavail = new Set(myUnavailDates)
+    const newMembersUnavail = { ...membersUnavail, [user.id]: new Set(membersUnavail[user.id] || []) }
+    for (const d of dates) {
+      if (!myUnavailDates.has(d)) {
+        await supabase.from('user_unavailability').insert({ user_id: user.id, date: d })
+        newUnavail.add(d)
+        newMembersUnavail[user.id].add(d)
       }
     }
+    setMyUnavailDates(newUnavail)
+    setMembersUnavail(newMembersUnavail)
   }
 
   async function handleDeletePersonalEvent(dateStr) {
@@ -245,9 +269,18 @@ export default function MemberPage() {
     if (!existing) return
     await supabase.from('personal_events').delete().eq('id', existing.id)
     setMyPersonalEvents(prev => { const n = { ...prev }; delete n[dateStr]; return n })
-    // Remove unavailability too
-    await supabase.from('user_unavailability').delete().eq('user_id', user.id).eq('date', dateStr)
-    setMyUnavailDates(prev => { const n = new Set(prev); n.delete(dateStr); return n })
+
+    // Remove unavailability for all dates in the event range
+    const dates = getDatesInRange(existing.date, existing.end_date || existing.date)
+    const newUnavail = new Set(myUnavailDates)
+    const newMembersUnavail = { ...membersUnavail, [user.id]: new Set(membersUnavail[user.id] || []) }
+    for (const d of dates) {
+      await supabase.from('user_unavailability').delete().eq('user_id', user.id).eq('date', d)
+      newUnavail.delete(d)
+      newMembersUnavail[user.id].delete(d)
+    }
+    setMyUnavailDates(newUnavail)
+    setMembersUnavail(newMembersUnavail)
   }
 
   async function handleSaveGroupEvent(dateStr, title, notes, endDate, isTimed, startTime, endTime) {
@@ -377,6 +410,13 @@ export default function MemberPage() {
     ) || null
   }, [modalDate, groupEvents])
 
+  const modalPersonalEvent = useMemo(() => {
+    if (!modalDate) return null
+    return Object.values(myPersonalEvents).find(e =>
+      modalDate >= e.date && modalDate <= (e.end_date || e.date)
+    ) || null
+  }, [modalDate, myPersonalEvents])
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#f8f7f4] dark:bg-[#111110]">
@@ -484,7 +524,7 @@ export default function MemberPage() {
           myRsvps={myRsvps}
           allRsvps={allRsvps}
           displayMode={displayMode}
-          personalEvent={myPersonalEvents[modalDate] || null}
+          personalEvent={modalPersonalEvent}
           onClose={() => setModalDate(null)}
           onSaveGroupEvent={handleSaveGroupEvent}
           onDeleteGroupEvent={handleDeleteGroupEvent}

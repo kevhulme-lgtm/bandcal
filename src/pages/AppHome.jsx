@@ -14,6 +14,7 @@ export default function AppHome() {
   const [showCreate, setShowCreate] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
   const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState('')
 
   const displayName = user?.user_metadata?.display_name || user?.email?.split('@')[0]
 
@@ -38,21 +39,34 @@ export default function AppHome() {
   async function createGroup() {
     if (!newGroupName.trim()) return
     setCreating(true)
+    setCreateError('')
 
-    const { data: group, error } = await supabase
+    const { data: group, error: groupError } = await supabase
       .from('groups')
       .insert({ name: newGroupName.trim(), created_by: user.id })
       .select()
       .single()
 
-    if (error) { setCreating(false); return }
+    if (groupError) {
+      console.error('Create group error:', groupError)
+      setCreateError(groupError.message)
+      setCreating(false)
+      return
+    }
 
-    await supabase.from('members').insert({
+    const { error: memberError } = await supabase.from('members').insert({
       group_id: group.id,
       user_id: user.id,
       display_name: displayName,
       is_owner: true
     })
+
+    if (memberError) {
+      console.error('Add member error:', memberError)
+      setCreateError(memberError.message)
+      setCreating(false)
+      return
+    }
 
     setCreating(false)
     setNewGroupName('')
@@ -117,12 +131,13 @@ export default function AppHome() {
             className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-white/5 border border-black/10 dark:border-white/10
               font-body text-[#1a1a18] dark:text-[#e8e6e0] placeholder-[#aaa] focus:outline-none focus:ring-2 focus:ring-green-400/50"
           />
+          {createError && <p className="text-sm text-red-500 font-body">{createError}</p>}
           <div className="flex gap-2">
             <button onClick={createGroup} disabled={creating || !newGroupName.trim()}
               className="flex-1 py-3 rounded-2xl bg-[#1a1a18] dark:bg-[#e8e6e0] text-white dark:text-[#1a1a18] font-body font-semibold text-sm disabled:opacity-40">
               {creating ? 'Creating…' : 'Create'}
             </button>
-            <button onClick={() => { setShowCreate(false); setNewGroupName('') }}
+            <button onClick={() => { setShowCreate(false); setNewGroupName(''); setCreateError('') }}
               className="px-5 py-3 rounded-2xl border border-black/10 dark:border-white/10 font-body text-sm">
               Cancel
             </button>
