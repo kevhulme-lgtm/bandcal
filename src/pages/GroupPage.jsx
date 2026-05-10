@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
-import { Copy, Check, Crown, ChevronLeft, X, RefreshCw } from '../components/Icons'
+import { Copy, Check, Crown, ChevronLeft, X, RefreshCw, Calendar } from '../components/Icons'
 
 export default function GroupPage() {
   const { groupToken } = useParams()
@@ -10,6 +10,7 @@ export default function GroupPage() {
   const navigate = useNavigate()
 
   const [group, setGroup] = useState(null)
+  const [myMemberId, setMyMemberId] = useState(null)
   const [members, setMembers] = useState([])
   const [invite, setInvite] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -19,17 +20,20 @@ export default function GroupPage() {
   const [thresholdValue, setThresholdValue] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [error, setError] = useState(null)
 
   useEffect(() => { loadGroup() }, [groupToken])
 
   async function loadGroup() {
-    const { data: g } = await supabase.from('groups').select('*').eq('token', groupToken).single()
-    if (!g) { navigate('/app'); return }
+    const { data: g, error: gErr } = await supabase.from('groups').select('*').eq('token', groupToken).single()
+    if (gErr || !g) { console.error('groups query failed', gErr); setError('Could not load group.'); setLoading(false); return }
 
-    const { data: me } = await supabase.from('members')
+    const { data: me, error: meErr } = await supabase.from('members')
       .select('*').eq('group_id', g.id).eq('user_id', user.id).maybeSingle()
-    if (!me?.is_owner) { navigate('/app'); return }
+    if (meErr || !me) { console.error('members query failed', meErr); setError('Could not load membership.'); setLoading(false); return }
+    if (!me.is_owner) { navigate(`/app/g/${groupToken}/m/${g.id}`); return }
 
+    setMyMemberId(me.id)
     setGroup(g)
     setThresholdType(g.threshold_type || 'all')
     setThresholdValue(g.threshold_value || '')
@@ -99,9 +103,17 @@ export default function GroupPage() {
     setTimeout(() => setSaved(false), 2000)
   }
 
-  if (loading) return (
+  if (loading && !error) return (
     <div className="min-h-screen flex items-center justify-center bg-[#f8f7f4] dark:bg-[#111110]">
       <div className="font-display text-2xl tracking-widest text-[#888] animate-pulse">LOADING</div>
+    </div>
+  )
+
+  if (error) return (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-[#f8f7f4] dark:bg-[#111110] px-6">
+      <p className="font-body text-red-500 text-center">{error}</p>
+      <p className="font-body text-xs text-[#aaa] text-center">Check the browser console for details.</p>
+      <button onClick={() => navigate(-1)} className="font-body text-sm text-[#888] underline">Go back</button>
     </div>
   )
 
@@ -183,7 +195,7 @@ export default function GroupPage() {
       </section>
 
       {/* Members */}
-      <section>
+      <section className="mb-8">
         <h2 className="text-xs font-medium uppercase tracking-widest text-[#888] mb-3">Members ({members.length})</h2>
         <div className="space-y-2">
           {members.map(m => (
@@ -203,6 +215,16 @@ export default function GroupPage() {
             </div>
           ))}
         </div>
+      </section>
+
+      {/* Open calendar */}
+      <section>
+        <button
+          onClick={() => navigate(`/app/g/${groupToken}/m/${group.id}`)}
+          className="w-full py-3.5 rounded-2xl border border-black/10 dark:border-white/10 font-body text-sm font-medium
+            text-[#1a1a18] dark:text-[#e8e6e0] flex items-center justify-center gap-2 hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+          <Calendar size={16} /> Open group calendar
+        </button>
       </section>
     </div>
   )
