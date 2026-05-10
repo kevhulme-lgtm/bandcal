@@ -127,9 +127,11 @@ function DayCell({ dateStr, status, isToday, isFaded, onClick, onLongPress, view
   return (
     <button
       {...pressHandlers}
+      onContextMenu={e => e.preventDefault()}
       className={`
         relative flex items-center justify-center rounded-lg border
         font-body font-medium text-sm transition-all duration-150 active:scale-95
+        select-none
         ${baseBg} ${spanClass} ${todayRing}
         ${isFaded ? 'opacity-20' : 'opacity-100'}
         ${onClick ? 'cursor-pointer' : 'cursor-default'}
@@ -147,7 +149,7 @@ function DayCell({ dateStr, status, isToday, isFaded, onClick, onLongPress, view
   )
 }
 
-export function MonthView({ year, month, myUnavailable, allUnavailability, memberCount, threshold, viewMode, groupEvents = {}, onDayClick, onPrev, onNext }) {
+export function MonthView({ year, month, myUnavailable, allUnavailability, memberCount, threshold, viewMode, groupEvents = {}, onDayClick, onLongPress, onPrev, onNext }) {
   const today = formatDate(new Date())
   const { onTouchStart, onTouchEnd } = useSwipe(onNext, onPrev)
   const eventDayMap = useMemo(() => buildEventDayMap(groupEvents), [groupEvents])
@@ -201,6 +203,7 @@ export function MonthView({ year, month, myUnavailable, allUnavailability, membe
               isToday={dateStr === today}
               isFaded={faded}
               onClick={onDayClick}
+              onLongPress={onLongPress}
               viewMode={viewMode}
               eventInfo={eventDayMap[dateStr] || null}
             />

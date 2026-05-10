@@ -19,11 +19,24 @@ function formatTimeDisplay(t) {
   return `${hour}:${String(m).padStart(2, '0')}${ampm}`
 }
 
+const RSVP_OPTIONS = [
+  { status: 'accepted', label: 'Going', color: 'text-green-600 dark:text-green-400', bg: 'bg-green-500/10 border-green-400/30' },
+  { status: 'maybe', label: 'Maybe', color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-500/10 border-amber-400/30' },
+  { status: 'declined', label: "Can't make it", color: 'text-red-500', bg: 'bg-red-500/10 border-red-400/30' },
+]
+
 export default function DayModal({
   dateStr, members, unavailableSet, event,
   myId, myOverrides, displayMode,
-  onClose, onSaveEvent, onDeleteEvent, onOverrideToggle
+  myRsvps = {}, allRsvps = {},
+  personalEvent,
+  onClose,
+  onSaveGroupEvent, onDeleteGroupEvent,
+  onSavePersonalEvent, onDeletePersonalEvent,
+  onOverrideToggle, onRsvp
 }) {
+  const [tab, setTab] = useState('group')
+
   const [editingEvent, setEditingEvent] = useState(false)
   const [title, setTitle] = useState('')
   const [notes, setNotes] = useState('')
@@ -34,6 +47,12 @@ export default function DayModal({
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
+  const [editingPersonal, setEditingPersonal] = useState(false)
+  const [personalTitle, setPersonalTitle] = useState('')
+  const [personalNotes, setPersonalNotes] = useState('')
+  const [savingPersonal, setSavingPersonal] = useState(false)
+  const [confirmDeletePersonal, setConfirmDeletePersonal] = useState(false)
+
   useEffect(() => {
     if (event) {
       setTitle(event.title || '')
@@ -43,255 +62,341 @@ export default function DayModal({
       setStartTime(event.start_time ? event.start_time.slice(0, 5) : '')
       setEndTime(event.end_time ? event.end_time.slice(0, 5) : '')
     } else {
-      setTitle(''); setNotes(''); setEndDate('')
-      setIsTimed(false); setStartTime(''); setEndTime('')
+      setTitle(''); setNotes(''); setEndDate(''); setIsTimed(false); setStartTime(''); setEndTime('')
     }
     setEditingEvent(false)
     setConfirmDelete(false)
   }, [dateStr, event])
 
+  useEffect(() => {
+    if (personalEvent) {
+      setPersonalTitle(personalEvent.title || '')
+      setPersonalNotes(personalEvent.notes || '')
+    } else {
+      setPersonalTitle(''); setPersonalNotes('')
+    }
+    setEditingPersonal(false)
+    setConfirmDeletePersonal(false)
+  }, [dateStr, personalEvent])
+
   if (!dateStr) return null
 
-  const hasEvent = !!event
+  const hasGroupEvent = !!event
+  const hasPersonalEvent = !!personalEvent
   const myHasOverride = myOverrides?.has(dateStr)
-  const availMembers = members.filter(m => !unavailableSet.has(m.id))
-  const unavailMembers = members.filter(m => unavailableSet.has(m.id))
-
-  const isMultiDay = hasEvent && event.end_date && event.end_date !== event.start_date
-  const headerLabel = hasEvent && !editingEvent
-    ? (isMultiDay
-        ? `${formatDateLabel(event.start_date)} — ${formatDateLabel(event.end_date)}`
-        : formatDateLabel(event.start_date))
+  const availMembers = members.filter(m => !unavailableSet.has(m.user_id))
+  const unavailMembers = members.filter(m => unavailableSet.has(m.user_id))
+  const isMultiDay = hasGroupEvent && event.end_date && event.end_date !== event.start_date
+  const groupEventHeaderLabel = hasGroupEvent
+    ? (isMultiDay ? `${formatDateLabel(event.start_date)} — ${formatDateLabel(event.end_date)}` : formatDateLabel(event.start_date))
     : formatDateLabel(dateStr)
+  const myRsvpStatus = event ? myRsvps[event.id] : null
+  const eventRsvps = event ? (allRsvps[event.id] || []) : []
 
-  async function handleSave() {
+  async function handleSaveGroupEvent() {
     if (!title.trim()) return
     setSaving(true)
-    await onSaveEvent(dateStr, title.trim(), notes.trim(), endDate || dateStr, isTimed, startTime, endTime)
+    await onSaveGroupEvent(dateStr, title.trim(), notes.trim(), endDate || dateStr, isTimed, startTime, endTime)
     setSaving(false)
     setEditingEvent(false)
   }
 
-  async function handleDelete() {
-    await onDeleteEvent(dateStr)
-    onClose()
+  async function handleSavePersonalEvent() {
+    if (!personalTitle.trim()) return
+    setSavingPersonal(true)
+    await onSavePersonalEvent(dateStr, personalTitle.trim(), personalNotes.trim())
+    setSavingPersonal(false)
+    setEditingPersonal(false)
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm fade-in"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-lg bg-[#f8f7f4] dark:bg-[#1c1c1a] rounded-t-3xl slide-up overflow-y-auto"
-        style={{ maxHeight: '88vh' }}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className={`px-6 pt-6 pb-4 ${hasEvent ? (event.is_timed ? 'bg-amber-500/10 dark:bg-amber-500/10' : 'bg-blue-500/10 dark:bg-blue-500/15') : ''}`}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm fade-in"
+      onClick={onClose}>
+      <div className="w-full max-w-lg bg-[#f8f7f4] dark:bg-[#1c1c1a] rounded-t-3xl slide-up overflow-y-auto"
+        style={{ maxHeight: '88vh' }} onClick={e => e.stopPropagation()}>
+
+        <div className="px-6 pt-6 pb-4">
           <div className="flex items-start justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              {hasEvent && !editingEvent && (
-                <p className={`text-xs font-medium uppercase tracking-widest mb-1 ${event.is_timed ? 'text-amber-500' : 'text-blue-500 dark:text-blue-400'}`}>
-                  {event.is_timed ? 'Timed Event' : 'Group Event'}
-                  {event.is_timed && event.start_time && ` · ${formatTimeDisplay(event.start_time)}${event.end_time ? ` – ${formatTimeDisplay(event.end_time)}` : ''}`}
-                </p>
-              )}
-              {hasEvent && !editingEvent
-                ? <h3 className="font-display text-2xl tracking-wider text-[#1a1a18] dark:text-[#e8e6e0] leading-tight">{event.title}</h3>
-                : <h3 className="font-display text-lg tracking-wider text-[#1a1a18] dark:text-[#e8e6e0]">{headerLabel}</h3>
-              }
-              {hasEvent && !editingEvent && (
-                <p className="text-xs text-[#999] mt-1">{headerLabel}</p>
-              )}
-              {hasEvent && event.notes && !editingEvent && (
-                <p className="font-body text-sm text-[#666] dark:text-[#999] mt-2 whitespace-pre-line">{event.notes}</p>
-              )}
-            </div>
+            <h3 className="font-display text-lg tracking-wider text-[#1a1a18] dark:text-[#e8e6e0]">
+              {formatDateLabel(dateStr)}
+            </h3>
             <button onClick={onClose} className="p-2 rounded-full hover:bg-black/10 dark:hover:bg-white/10 flex-shrink-0">
               <X size={18} />
             </button>
           </div>
         </div>
 
+        {/* Tab bar */}
+        <div className="px-6 pb-2">
+          <div className="flex bg-black/5 dark:bg-white/10 rounded-2xl p-1 gap-1">
+            <button onClick={() => setTab('group')}
+              className={`flex-1 py-2 rounded-xl text-sm font-body font-medium transition-all flex items-center justify-center gap-1.5 ${
+                tab === 'group' ? 'bg-white dark:bg-white/20 shadow-sm text-[#1a1a18] dark:text-[#e8e6e0]' : 'text-[#888]'
+              }`}>
+              Group {hasGroupEvent && <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
+            </button>
+            <button onClick={() => setTab('personal')}
+              className={`flex-1 py-2 rounded-xl text-sm font-body font-medium transition-all flex items-center justify-center gap-1.5 ${
+                tab === 'personal' ? 'bg-white dark:bg-white/20 shadow-sm text-[#1a1a18] dark:text-[#e8e6e0]' : 'text-[#888]'
+              }`}>
+              Personal {hasPersonalEvent && <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />}
+            </button>
+          </div>
+        </div>
+
         <div className="px-6 pb-10 space-y-5 pt-4">
 
-          {/* Event editor */}
-          {editingEvent && (
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-medium uppercase tracking-widest text-[#888] block mb-1.5">Event title</label>
-                <input
-                  type="text"
-                  value={title}
-                  onChange={e => setTitle(e.target.value)}
-                  placeholder="e.g. Gig at The Buttermarket"
-                  autoFocus
-                  className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-white/5 border border-black/10 dark:border-white/10
-                    font-body text-[#1a1a18] dark:text-[#e8e6e0] placeholder-[#aaa] focus:outline-none focus:ring-2 focus:ring-blue-400/50"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-medium uppercase tracking-widest text-[#888] block mb-1.5">Notes <span className="normal-case text-[#aaa]">(optional)</span></label>
-                <textarea
-                  value={notes}
-                  onChange={e => setNotes(e.target.value)}
-                  placeholder="Load-in time, venue address, soundcheck..."
-                  rows={3}
-                  className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-white/5 border border-black/10 dark:border-white/10
-                    font-body text-sm text-[#1a1a18] dark:text-[#e8e6e0] placeholder-[#aaa] focus:outline-none focus:ring-2 focus:ring-blue-400/50 resize-none"
-                />
-              </div>
-
-              {/* End date */}
-              <div>
-                <label className="text-xs font-medium uppercase tracking-widest text-[#888] block mb-1.5">
-                  End date <span className="normal-case text-[#aaa]">(leave blank for single day)</span>
-                </label>
-                <input
-                  type="date"
-                  value={endDate}
-                  min={dateStr}
-                  onChange={e => setEndDate(e.target.value)}
-                  className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-white/5 border border-black/10 dark:border-white/10
-                    font-body text-[#1a1a18] dark:text-[#e8e6e0] focus:outline-none focus:ring-2 focus:ring-blue-400/50"
-                />
-              </div>
-
-              {/* Timed event toggle */}
-              <label className="flex items-center gap-3 cursor-pointer">
-                <div
-                  onClick={() => setIsTimed(v => !v)}
-                  className={`w-11 h-6 rounded-full transition-colors flex-shrink-0 relative ${isTimed ? 'bg-amber-500' : 'bg-black/20 dark:bg-white/20'}`}
-                >
-                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${isTimed ? 'translate-x-5' : ''}`} />
-                </div>
-                <span className="font-body text-sm text-[#1a1a18] dark:text-[#e8e6e0]">Specific time <span className="text-[#888]">(shows amber — partial day)</span></span>
-              </label>
-
-              {isTimed && (
-                <div className="flex gap-3">
-                  <div className="flex-1">
-                    <label className="text-xs font-medium uppercase tracking-widest text-[#888] block mb-1.5">Start time</label>
-                    <input
-                      type="time"
-                      value={startTime}
-                      onChange={e => setStartTime(e.target.value)}
-                      className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-white/5 border border-black/10 dark:border-white/10
-                        font-body text-[#1a1a18] dark:text-[#e8e6e0] focus:outline-none focus:ring-2 focus:ring-amber-400/50"
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <label className="text-xs font-medium uppercase tracking-widest text-[#888] block mb-1.5">End time</label>
-                    <input
-                      type="time"
-                      value={endTime}
-                      onChange={e => setEndTime(e.target.value)}
-                      className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-white/5 border border-black/10 dark:border-white/10
-                        font-body text-[#1a1a18] dark:text-[#e8e6e0] focus:outline-none focus:ring-2 focus:ring-amber-400/50"
-                    />
-                  </div>
+          {/* ── GROUP TAB ── */}
+          {tab === 'group' && (
+            <>
+              {hasGroupEvent && !editingEvent && (
+                <div className={`rounded-2xl p-4 border ${event.is_timed ? 'bg-amber-500/10 border-amber-400/20' : 'bg-blue-500/10 border-blue-400/20'}`}>
+                  <p className={`text-xs font-medium uppercase tracking-widest mb-1 ${event.is_timed ? 'text-amber-500' : 'text-blue-500 dark:text-blue-400'}`}>
+                    {event.is_timed ? 'Timed Event' : 'Group Event'}
+                    {event.is_timed && event.start_time && ` · ${formatTimeDisplay(event.start_time)}${event.end_time ? ` – ${formatTimeDisplay(event.end_time)}` : ''}`}
+                  </p>
+                  <h3 className="font-display text-2xl tracking-wider text-[#1a1a18] dark:text-[#e8e6e0]">{event.title}</h3>
+                  <p className="text-xs text-[#999] mt-1">{groupEventHeaderLabel}</p>
+                  {event.notes && <p className="font-body text-sm text-[#666] dark:text-[#999] mt-2 whitespace-pre-line">{event.notes}</p>}
                 </div>
               )}
 
-              <div className="flex gap-2">
-                <button
-                  onClick={handleSave}
-                  disabled={saving || !title.trim()}
-                  className="flex-1 py-3 rounded-2xl bg-blue-500 text-white font-body font-semibold text-sm disabled:opacity-40 flex items-center justify-center gap-2"
-                >
-                  {saving ? 'Saving…' : <><Check size={14} /> Save event</>}
-                </button>
-                <button
-                  onClick={() => { setEditingEvent(false) }}
-                  className="px-5 py-3 rounded-2xl border border-black/10 dark:border-white/10 font-body text-sm"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Action buttons */}
-          {!editingEvent && (
-            <div className="flex gap-2 flex-wrap">
-              {!hasEvent && (
-                <button
-                  onClick={() => setEditingEvent(true)}
-                  className="px-4 py-2 rounded-xl bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400
-                    font-body text-sm font-medium border border-blue-400/20 hover:bg-blue-500/20 transition-colors"
-                >
-                  + Add event
-                </button>
-              )}
-              {hasEvent && <>
-                <button
-                  onClick={() => setEditingEvent(true)}
-                  className="px-4 py-2 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400
-                    font-body text-sm font-medium border border-blue-400/20 hover:bg-blue-500/20 transition-colors"
-                >
-                  Edit
-                </button>
-                {!confirmDelete
-                  ? <button onClick={() => setConfirmDelete(true)}
-                      className="px-4 py-2 rounded-xl bg-red-500/10 text-red-500 font-body text-sm font-medium border border-red-400/20">
-                      Delete
-                    </button>
-                  : <button onClick={handleDelete}
-                      className="px-4 py-2 rounded-xl bg-red-500 text-white font-body text-sm font-medium">
-                      Confirm delete
-                    </button>
-                }
-                <button
-                  onClick={() => onOverrideToggle(dateStr)}
-                  className={`px-4 py-2 rounded-xl font-body text-sm font-medium border transition-colors ${
-                    myHasOverride
-                      ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-400/20'
-                      : 'bg-black/5 dark:bg-white/5 text-[#888] border-black/10 dark:border-white/10'
-                  }`}
-                >
-                  {myHasOverride ? '✓ I\'m free for this' : 'I\'m free for this group'}
-                </button>
-              </>}
-            </div>
-          )}
-
-          {/* Divider + member list */}
-          {!editingEvent && <>
-            <div className="h-px bg-black/10 dark:bg-white/10" />
-            <div className="space-y-4">
-              {unavailMembers.length > 0 && (
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-widest text-red-500 dark:text-red-400 mb-2">Unavailable</p>
-                  <div className="space-y-2">
-                    {unavailMembers.map(m => (
-                      <div key={m.id} className="flex items-center gap-3 bg-red-500/10 rounded-xl px-4 py-2.5">
-                        <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
-                        <span className="font-body font-medium text-[#1a1a18] dark:text-[#e8e6e0]">{m.nickname}</span>
+              {editingEvent && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-medium uppercase tracking-widest text-[#888] block mb-1.5">Event title</label>
+                    <input type="text" value={title} onChange={e => setTitle(e.target.value)}
+                      placeholder="e.g. Gig at The Buttermarket" autoFocus
+                      className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-white/5 border border-black/10 dark:border-white/10
+                        font-body text-[#1a1a18] dark:text-[#e8e6e0] placeholder-[#aaa] focus:outline-none focus:ring-2 focus:ring-blue-400/50" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium uppercase tracking-widest text-[#888] block mb-1.5">Notes <span className="normal-case text-[#aaa]">(optional)</span></label>
+                    <textarea value={notes} onChange={e => setNotes(e.target.value)}
+                      placeholder="Load-in time, venue address, soundcheck..." rows={3}
+                      className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-white/5 border border-black/10 dark:border-white/10
+                        font-body text-sm text-[#1a1a18] dark:text-[#e8e6e0] placeholder-[#aaa] focus:outline-none focus:ring-2 focus:ring-blue-400/50 resize-none" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium uppercase tracking-widest text-[#888] block mb-1.5">
+                      End date <span className="normal-case text-[#aaa]">(leave blank for single day)</span>
+                    </label>
+                    <input type="date" value={endDate} min={dateStr} onChange={e => setEndDate(e.target.value)}
+                      className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-white/5 border border-black/10 dark:border-white/10
+                        font-body text-[#1a1a18] dark:text-[#e8e6e0] focus:outline-none focus:ring-2 focus:ring-blue-400/50" />
+                  </div>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <div onClick={() => setIsTimed(v => !v)}
+                      className={`w-11 h-6 rounded-full transition-colors flex-shrink-0 relative ${isTimed ? 'bg-amber-500' : 'bg-black/20 dark:bg-white/20'}`}>
+                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${isTimed ? 'translate-x-5' : ''}`} />
+                    </div>
+                    <span className="font-body text-sm text-[#1a1a18] dark:text-[#e8e6e0]">Specific time <span className="text-[#888]">(shows amber)</span></span>
+                  </label>
+                  {isTimed && (
+                    <div className="flex gap-3">
+                      <div className="flex-1">
+                        <label className="text-xs font-medium uppercase tracking-widest text-[#888] block mb-1.5">Start</label>
+                        <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)}
+                          className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-white/5 border border-black/10 dark:border-white/10 font-body text-[#1a1a18] dark:text-[#e8e6e0] focus:outline-none" />
                       </div>
+                      <div className="flex-1">
+                        <label className="text-xs font-medium uppercase tracking-widest text-[#888] block mb-1.5">End</label>
+                        <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)}
+                          className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-white/5 border border-black/10 dark:border-white/10 font-body text-[#1a1a18] dark:text-[#e8e6e0] focus:outline-none" />
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <button onClick={handleSaveGroupEvent} disabled={saving || !title.trim()}
+                      className="flex-1 py-3 rounded-2xl bg-blue-500 text-white font-body font-semibold text-sm disabled:opacity-40 flex items-center justify-center gap-2">
+                      {saving ? 'Saving…' : <><Check size={14} /> Save event</>}
+                    </button>
+                    <button onClick={() => setEditingEvent(false)}
+                      className="px-5 py-3 rounded-2xl border border-black/10 dark:border-white/10 font-body text-sm">Cancel</button>
+                  </div>
+                </div>
+              )}
+
+              {!editingEvent && (
+                <div className="flex gap-2 flex-wrap">
+                  {!hasGroupEvent && (
+                    <button onClick={() => setEditingEvent(true)}
+                      className="px-4 py-2 rounded-xl bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400
+                        font-body text-sm font-medium border border-blue-400/20 hover:bg-blue-500/20 transition-colors">
+                      + Add group event
+                    </button>
+                  )}
+                  {hasGroupEvent && (
+                    <>
+                      <button onClick={() => setEditingEvent(true)}
+                        className="px-4 py-2 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 font-body text-sm font-medium border border-blue-400/20">Edit</button>
+                      {!confirmDelete
+                        ? <button onClick={() => setConfirmDelete(true)}
+                            className="px-4 py-2 rounded-xl bg-red-500/10 text-red-500 font-body text-sm font-medium border border-red-400/20">Delete</button>
+                        : <button onClick={() => { onDeleteGroupEvent(dateStr); onClose() }}
+                            className="px-4 py-2 rounded-xl bg-red-500 text-white font-body text-sm font-medium">Confirm delete</button>
+                      }
+                      <button onClick={() => onOverrideToggle(dateStr)}
+                        className={`px-4 py-2 rounded-xl font-body text-sm font-medium border transition-colors ${
+                          myHasOverride
+                            ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-400/20'
+                            : 'bg-black/5 dark:bg-white/5 text-[#888] border-black/10 dark:border-white/10'
+                        }`}>
+                        {myHasOverride ? "✓ I'm free for this" : "I'm free for this"}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* RSVP */}
+              {hasGroupEvent && !editingEvent && (
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-widest text-[#888] mb-2">Your RSVP</p>
+                  <div className="flex gap-2">
+                    {RSVP_OPTIONS.map(opt => (
+                      <button key={opt.status} onClick={() => onRsvp(event.id, opt.status)}
+                        className={`flex-1 py-2 px-2 rounded-xl border font-body text-xs font-medium transition-all ${
+                          myRsvpStatus === opt.status
+                            ? `${opt.bg} ${opt.color}`
+                            : 'border-black/10 dark:border-white/10 text-[#888] hover:border-black/20 dark:hover:border-white/20'
+                        }`}>
+                        {opt.label}
+                      </button>
                     ))}
                   </div>
+                  {eventRsvps.length > 0 && (
+                    <div className="mt-3 space-y-1">
+                      {RSVP_OPTIONS.map(opt => {
+                        const responding = eventRsvps.filter(r => r.status === opt.status)
+                        if (!responding.length) return null
+                        return (
+                          <div key={opt.status} className="flex items-center gap-2">
+                            <span className={`text-xs font-medium ${opt.color} w-24 flex-shrink-0`}>{opt.label}</span>
+                            <span className="text-xs text-[#888] font-body">
+                              {responding.map(r => {
+                                const m = members.find(mem => mem.user_id === r.user_id)
+                                return m?.display_name || 'Someone'
+                              }).join(', ')}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
-              {availMembers.length > 0 && (
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-widest text-green-600 dark:text-green-400 mb-2">Available</p>
-                  <div className="space-y-2">
-                    {availMembers.map(m => (
-                      <div key={m.id} className="flex items-center gap-3 bg-green-500/10 rounded-xl px-4 py-2.5">
-                        <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
-                        <span className="font-body font-medium text-[#1a1a18] dark:text-[#e8e6e0]">{m.nickname}</span>
+
+              {/* Member list */}
+              {!editingEvent && (
+                <>
+                  <div className="h-px bg-black/10 dark:bg-white/10" />
+                  <div className="space-y-4">
+                    {unavailMembers.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-widest text-red-500 dark:text-red-400 mb-2">Unavailable</p>
+                        <div className="space-y-2">
+                          {unavailMembers.map(m => (
+                            <div key={m.id} className="flex items-center gap-3 bg-red-500/10 rounded-xl px-4 py-2.5">
+                              <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
+                              <span className="font-body font-medium text-[#1a1a18] dark:text-[#e8e6e0]">{m.display_name}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    ))}
+                    )}
+                    {availMembers.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-widest text-green-600 dark:text-green-400 mb-2">Available</p>
+                        <div className="space-y-2">
+                          {availMembers.map(m => (
+                            <div key={m.id} className="flex items-center gap-3 bg-green-500/10 rounded-xl px-4 py-2.5">
+                              <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+                              <span className="font-body font-medium text-[#1a1a18] dark:text-[#e8e6e0]">{m.display_name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {members.length === 0 && (
+                      <p className="text-center text-sm text-[#888] py-4">No members yet</p>
+                    )}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {/* ── PERSONAL TAB ── */}
+          {tab === 'personal' && (
+            <>
+              {hasPersonalEvent && !editingPersonal && (
+                <div className="rounded-2xl p-4 border bg-purple-500/10 border-purple-400/20">
+                  <p className="text-xs font-medium uppercase tracking-widest text-purple-500 mb-1">Personal Event</p>
+                  <h3 className="font-display text-2xl tracking-wider text-[#1a1a18] dark:text-[#e8e6e0]">{personalEvent.title}</h3>
+                  {personalEvent.notes && <p className="font-body text-sm text-[#666] dark:text-[#999] mt-2 whitespace-pre-line">{personalEvent.notes}</p>}
+                  <p className="text-xs text-[#aaa] mt-2">Only you can see this. Your unavailability is shared with all your groups.</p>
+                </div>
+              )}
+
+              {editingPersonal && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-medium uppercase tracking-widest text-[#888] block mb-1.5">Event title</label>
+                    <input type="text" value={personalTitle} onChange={e => setPersonalTitle(e.target.value)}
+                      placeholder="e.g. Doctor's appointment" autoFocus
+                      className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-white/5 border border-black/10 dark:border-white/10
+                        font-body text-[#1a1a18] dark:text-[#e8e6e0] placeholder-[#aaa] focus:outline-none focus:ring-2 focus:ring-purple-400/50" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium uppercase tracking-widest text-[#888] block mb-1.5">Notes <span className="normal-case text-[#aaa]">(optional)</span></label>
+                    <textarea value={personalNotes} onChange={e => setPersonalNotes(e.target.value)}
+                      placeholder="Details..." rows={3}
+                      className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-white/5 border border-black/10 dark:border-white/10
+                        font-body text-sm text-[#1a1a18] dark:text-[#e8e6e0] placeholder-[#aaa] focus:outline-none focus:ring-2 focus:ring-purple-400/50 resize-none" />
+                  </div>
+                  <p className="text-xs text-[#aaa] font-body">Details are private. Your unavailability will be visible to all your groups.</p>
+                  <div className="flex gap-2">
+                    <button onClick={handleSavePersonalEvent} disabled={savingPersonal || !personalTitle.trim()}
+                      className="flex-1 py-3 rounded-2xl bg-purple-500 text-white font-body font-semibold text-sm disabled:opacity-40 flex items-center justify-center gap-2">
+                      {savingPersonal ? 'Saving…' : <><Check size={14} /> Save</>}
+                    </button>
+                    <button onClick={() => setEditingPersonal(false)}
+                      className="px-5 py-3 rounded-2xl border border-black/10 dark:border-white/10 font-body text-sm">Cancel</button>
                   </div>
                 </div>
               )}
-              {members.length === 0 && (
-                <p className="text-center text-sm text-[#888] py-4">No members yet</p>
+
+              {!editingPersonal && (
+                <div className="flex gap-2 flex-wrap">
+                  {!hasPersonalEvent ? (
+                    <button onClick={() => setEditingPersonal(true)}
+                      className="px-4 py-2 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400
+                        font-body text-sm font-medium border border-purple-400/20 hover:bg-purple-500/20 transition-colors">
+                      + Add personal event
+                    </button>
+                  ) : (
+                    <>
+                      <button onClick={() => setEditingPersonal(true)}
+                        className="px-4 py-2 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 font-body text-sm font-medium border border-purple-400/20">Edit</button>
+                      {!confirmDeletePersonal
+                        ? <button onClick={() => setConfirmDeletePersonal(true)}
+                            className="px-4 py-2 rounded-xl bg-red-500/10 text-red-500 font-body text-sm font-medium border border-red-400/20">Delete</button>
+                        : <button onClick={() => { onDeletePersonalEvent(dateStr); onClose() }}
+                            className="px-4 py-2 rounded-xl bg-red-500 text-white font-body text-sm font-medium">Confirm delete</button>
+                      }
+                    </>
+                  )}
+                </div>
               )}
-            </div>
-          </>}
+
+              {!editingPersonal && (
+                <p className="text-xs text-[#aaa] font-body mt-2">
+                  Personal events are private — only your unavailability is visible to your groups.
+                </p>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>
