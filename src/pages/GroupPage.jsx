@@ -105,7 +105,7 @@ export default function GroupPage() {
 
   if (loading && !error) return (
     <div className="min-h-screen flex items-center justify-center bg-[#f8f7f4] dark:bg-[#111110]">
-      <div className="font-display text-2xl tracking-widest text-[#888] animate-pulse">LOADING</div>
+      <div className="font-display text-2xl tracking-widest text-[#888] animate-pulse">GROUP PAGE LOADING</div>
     </div>
   )
 
