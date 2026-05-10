@@ -2,13 +2,13 @@
 
 Thanks for testing! This is a work in progress so expect rough edges. If something breaks or feels weird, let Kev know.
 
-**https://bandcal.netlify.app**
+**https://band-lineup.netlify.app**
 
 ---
 
 ## Signing up
 
-1. Go to **https://bandcal.netlify.app**
+1. Go to **https://band-lineup.netlify.app**
 2. Pick a username and password — your username is how your bandmates will see you
 3. That's it, you're in
 

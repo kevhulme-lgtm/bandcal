@@ -22,16 +22,16 @@ export default function GroupPage() {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState(null)
 
-  useEffect(() => { loadGroup() }, [groupToken])
+  useEffect(() => { if (user) loadGroup() }, [groupToken, user])
 
   async function loadGroup() {
     const { data: g, error: gErr } = await supabase.from('groups').select('*').eq('token', groupToken).single()
-    if (gErr || !g) { console.error('groups query failed', gErr); setError('Could not load group.'); setLoading(false); return }
+    if (gErr || !g) { setError('Could not load group.'); setLoading(false); return }
 
     const { data: me, error: meErr } = await supabase.from('members')
       .select('*').eq('group_id', g.id).eq('user_id', user.id).maybeSingle()
-    if (meErr || !me) { console.error('members query failed', meErr); setError('Could not load membership.'); setLoading(false); return }
-    if (!me.is_owner) { setError(`DEBUG: is_owner=${JSON.stringify(me.is_owner)} (type: ${typeof me.is_owner}). Not owner, would redirect.`); setLoading(false); return }
+    if (meErr || !me) { setError('Could not load membership.'); setLoading(false); return }
+    if (!me.is_owner) { navigate(`/app/g/${groupToken}/m/${g.id}`, { replace: true }); return }
 
     setMyMemberId(me.id)
     setGroup(g)
@@ -103,16 +103,15 @@ export default function GroupPage() {
     setTimeout(() => setSaved(false), 2000)
   }
 
-  if (loading && !error) return (
+  if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-[#f8f7f4] dark:bg-[#111110]">
-      <div className="font-display text-2xl tracking-widest text-[#888] animate-pulse">GROUP PAGE LOADING</div>
+      <div className="font-display text-2xl tracking-widest text-[#888] animate-pulse">LOADING</div>
     </div>
   )
 
   if (error) return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-[#f8f7f4] dark:bg-[#111110] px-6">
       <p className="font-body text-red-500 text-center">{error}</p>
-      <p className="font-body text-xs text-[#aaa] text-center">Check the browser console for details.</p>
       <button onClick={() => navigate(-1)} className="font-body text-sm text-[#888] underline">Go back</button>
     </div>
   )
