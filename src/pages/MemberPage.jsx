@@ -478,7 +478,10 @@ export default function MemberPage() {
   }
 
   function handleDayClick(dateStr) {
-    if (displayMode === 'master' || groupEvents[dateStr] || hasEventOnDate(dateStr)) {
+    const hasPersonalEvent = Object.values(myPersonalEvents).some(e =>
+      dateStr >= e.date && dateStr <= (e.end_date || e.date)
+    )
+    if (displayMode === 'master' || groupEvents[dateStr] || hasEventOnDate(dateStr) || hasPersonalEvent) {
       setModalDate(dateStr); return
     }
     handlePersonalToggle(dateStr)

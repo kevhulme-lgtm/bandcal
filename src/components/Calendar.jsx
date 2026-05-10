@@ -51,21 +51,24 @@ function useLongPress(onLongPress, onClick, delay = 500) {
   return { onTouchStart: start, onTouchEnd: end, onTouchCancel: cancel, onMouseDown: start, onMouseUp: end, onMouseLeave: cancel }
 }
 
-function getDayStatus(dateStr, myUnavailable, allUnavailability, memberCount, threshold) {
+function getDayStatus(dateStr, myUnavailable, myTentative, allUnavailability, effectiveTentative, memberCount, threshold) {
   const myOut = myUnavailable.has(dateStr)
+  const myTent = myTentative?.has(dateStr) || false
   if (allUnavailability && memberCount > 0) {
     const unavailCount = allUnavailability[dateStr] || 0
+    const tentCount = effectiveTentative?.[dateStr] || 0
     const availCount = memberCount - unavailCount
     let required = memberCount
     if (threshold) {
       if (threshold.type === 'count') required = threshold.value
       else if (threshold.type === 'required_members') required = threshold.value
     }
-    if (unavailCount === 0) return { master: 'avail', myOut }
-    if (availCount >= required) return { master: 'partial', myOut }
-    return { master: 'unavail', myOut }
+    if (unavailCount === 0 && tentCount === 0) return { master: 'avail', myOut, myTent }
+    if (unavailCount === 0 && tentCount > 0) return { master: 'tentative', myOut, myTent }
+    if (availCount >= required) return { master: 'partial', myOut, myTent }
+    return { master: 'unavail', myOut, myTent }
   }
-  return { master: null, myOut }
+  return { master: null, myOut, myTent }
 }
 
 // Build a map of dateStr -> event info (including multi-day spans)
@@ -104,9 +107,11 @@ function DayCell({ dateStr, status, isToday, isFaded, onClick, onLongPress, view
     if (status.master === 'avail') baseBg = 'bg-green-500/20 border-green-400/50'
     else if (status.master === 'unavail') baseBg = 'bg-red-500/20 border-red-400/50'
     else if (status.master === 'partial') baseBg = 'bg-amber-500/20 border-amber-400/50'
+    else if (status.master === 'tentative') baseBg = 'bg-amber-500/20 border-amber-400/50'
     else baseBg = 'border-transparent'
   } else {
-    baseBg = status.myOut ? 'bg-red-500/25 border-red-400/50' : 'border-transparent'
+    if (status.myTent) baseBg = 'bg-amber-500/40 border-amber-400/70'
+    else baseBg = status.myOut ? 'bg-red-500/25 border-red-400/50' : 'border-transparent'
   }
 
   // Span styling for multi-day events
@@ -149,7 +154,7 @@ function DayCell({ dateStr, status, isToday, isFaded, onClick, onLongPress, view
   )
 }
 
-export function MonthView({ year, month, myUnavailable, allUnavailability, memberCount, threshold, viewMode, groupEvents = {}, onDayClick, onLongPress, onPrev, onNext }) {
+export function MonthView({ year, month, myUnavailable, myTentative, allUnavailability, effectiveTentative, memberCount, threshold, viewMode, groupEvents = {}, onDayClick, onLongPress, onPrev, onNext }) {
   const today = formatDate(new Date())
   const { onTouchStart, onTouchEnd } = useSwipe(onNext, onPrev)
   const eventDayMap = useMemo(() => buildEventDayMap(groupEvents), [groupEvents])
@@ -194,7 +199,7 @@ export function MonthView({ year, month, myUnavailable, allUnavailability, membe
       </div>
       <div className="grid grid-cols-7 gap-1 flex-1">
         {days.map(({ dateStr, faded }) => {
-          const status = getDayStatus(dateStr, myUnavailable, allUnavailability, memberCount, threshold)
+          const status = getDayStatus(dateStr, myUnavailable, myTentative, allUnavailability, effectiveTentative, memberCount, threshold)
           return (
             <DayCell
               key={dateStr}
@@ -214,7 +219,7 @@ export function MonthView({ year, month, myUnavailable, allUnavailability, membe
   )
 }
 
-export function YearView({ year, myUnavailable, allUnavailability, memberCount, threshold, viewMode, groupEvents = {}, onMonthClick, onPrev, onNext }) {
+export function YearView({ year, myUnavailable, myTentative, allUnavailability, effectiveTentative, memberCount, threshold, viewMode, groupEvents = {}, onMonthClick, onPrev, onNext }) {
   const { onTouchStart, onTouchEnd } = useSwipe(onNext, onPrev)
   return (
     <div className="flex flex-col h-full" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
@@ -233,7 +238,7 @@ export function YearView({ year, myUnavailable, allUnavailability, memberCount, 
           let availCount = 0, unavailCount = 0, partialCount = 0, hasEvents = false
           for (let d = 1; d <= daysInMonth; d++) {
             const dateStr = formatDate(new Date(year, mi, d))
-            const status = getDayStatus(dateStr, myUnavailable, allUnavailability, memberCount, threshold)
+            const status = getDayStatus(dateStr, myUnavailable, myTentative, allUnavailability, effectiveTentative, memberCount, threshold)
             if (Object.values(groupEvents).some(e => {
               const start = e.start_date, end = e.end_date || e.start_date
               return dateStr >= start && dateStr <= end
@@ -241,9 +246,10 @@ export function YearView({ year, myUnavailable, allUnavailability, memberCount, 
             if (viewMode === 'master') {
               if (status.master === 'avail') availCount++
               else if (status.master === 'unavail') unavailCount++
-              else if (status.master === 'partial') partialCount++
+              else if (status.master === 'partial' || status.master === 'tentative') partialCount++
             } else {
-              if (status.myOut) unavailCount++
+              if (status.myTent) partialCount++
+              else if (status.myOut) unavailCount++
               else availCount++
             }
           }
