@@ -31,7 +31,7 @@ export default function GroupPage() {
     const { data: me, error: meErr } = await supabase.from('members')
       .select('*').eq('group_id', g.id).eq('user_id', user.id).maybeSingle()
     if (meErr || !me) { console.error('members query failed', meErr); setError('Could not load membership.'); setLoading(false); return }
-    if (!me.is_owner) { navigate(`/app/g/${groupToken}/m/${g.id}`); return }
+    if (!me.is_owner) { setError(`DEBUG: is_owner=${JSON.stringify(me.is_owner)} (type: ${typeof me.is_owner}). Not owner, would redirect.`); setLoading(false); return }
 
     setMyMemberId(me.id)
     setGroup(g)
