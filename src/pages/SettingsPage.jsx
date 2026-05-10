@@ -51,7 +51,7 @@ export default function SettingsPage() {
       <section className="mb-8">
         <h2 className="text-xs font-medium uppercase tracking-widest text-[#888] mb-3">Account</h2>
         <div className="bg-white dark:bg-white/5 rounded-2xl p-4 border border-black/10 dark:border-white/10 space-y-3">
-          <p className="font-body text-xs text-[#888]">{user?.email}</p>
+          <p className="font-body text-xs text-[#888]">@{user?.user_metadata?.display_name}</p>
           <div className="flex gap-2">
             <input
               type="text"

@@ -18,17 +18,24 @@ export function AuthProvider({ children }) {
     return () => subscription.unsubscribe()
   }, [])
 
-  async function signUp(email, password, displayName) {
+  function usernameToEmail(username) {
+    return `${username.trim().toLowerCase()}@bandcal.app`
+  }
+
+  async function signUp(username, password) {
     const { data, error } = await supabase.auth.signUp({
-      email,
+      email: usernameToEmail(username),
       password,
-      options: { data: { display_name: displayName } }
+      options: { data: { display_name: username.trim() } }
     })
     return { data, error }
   }
 
-  async function signIn(email, password) {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+  async function signIn(username, password) {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: usernameToEmail(username),
+      password
+    })
     return { data, error }
   }
 
@@ -36,15 +43,8 @@ export function AuthProvider({ children }) {
     await supabase.auth.signOut()
   }
 
-  async function resetPassword(email) {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`
-    })
-    return { error }
-  }
-
   return (
-    <AuthContext.Provider value={{ user, signUp, signIn, signOut, resetPassword }}>
+    <AuthContext.Provider value={{ user, signUp, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   )
