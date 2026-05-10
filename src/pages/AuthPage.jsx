@@ -60,7 +60,7 @@ export default function AuthPage() {
       <div className="w-full max-w-sm fade-in">
 
         <div className="text-center mb-10">
-          <h1 className="font-display text-6xl tracking-widest text-[#1a1a18] dark:text-[#e8e6e0]">BANDCAL</h1>
+          <h1 className="font-display text-6xl tracking-widest text-[#1a1a18] dark:text-[#e8e6e0]">LINEUP</h1>
           <p className="font-body text-sm text-[#888] mt-1 tracking-wide">Band availability, zero hassle.</p>
         </div>
 

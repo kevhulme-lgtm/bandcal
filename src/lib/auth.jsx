@@ -19,7 +19,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   function usernameToEmail(username) {
-    return `${username.trim().toLowerCase()}@bandcal.app`
+    return `${username.trim().toLowerCase()}@lineup.app`
   }
 
   async function signUp(username, password) {

@@ -85,7 +85,7 @@ export default function AppHome() {
   return (
     <div className="min-h-screen bg-[#f8f7f4] dark:bg-[#111110] max-w-lg mx-auto px-4 pt-4 pb-10 fade-in">
       <header className="flex items-center justify-between mb-8">
-        <h1 className="font-display text-4xl tracking-wider text-[#1a1a18] dark:text-[#e8e6e0]">BANDCAL</h1>
+        <h1 className="font-display text-4xl tracking-wider text-[#1a1a18] dark:text-[#e8e6e0]">LINEUP</h1>
         <button onClick={() => navigate('/app/settings')}
           className="p-2 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors">
           <Settings size={18} />

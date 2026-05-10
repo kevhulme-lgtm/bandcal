@@ -9,7 +9,7 @@ import EventBanner from '../components/EventBanner'
 import { Settings, Crown, Users, ChevronLeft } from '../components/Icons'
 import { registerServiceWorker, requestPushPermission, isPushSupported, sendEventPushNotification } from '../lib/push'
 
-const SEEN_KEY = 'bandcal_seen_events'
+const SEEN_KEY = 'lineup_seen_events'
 function getSeenEventIds() {
   try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')) }
   catch { return new Set() }
@@ -30,9 +30,12 @@ export default function MemberPage() {
   const [allMembers, setAllMembers] = useState([])
 
   // Unavailability: user-level (personal) + accepted RSVPs from other groups
-  const [myUnavailDates, setMyUnavailDates] = useState(new Set())       // user_unavailability dates
-  const [membersUnavail, setMembersUnavail] = useState({})              // user_id -> Set<date>
-  const [groupEvents, setGroupEvents] = useState({})                    // start_date -> event
+  const [myUnavailDates, setMyUnavailDates] = useState(new Set())       // status='unavailable' dates
+  const [myTentativeDates, setMyTentativeDates] = useState(new Set())  // status='tentative' dates
+  const [membersUnavail, setMembersUnavail] = useState({})              // user_id -> Set<date> (definitive)
+  const [membersTentative, setMembersTentative] = useState({})          // user_id -> Set<date> (tentative)
+  const [groupEvents, setGroupEvents] = useState({})                    // start_date -> event (current group)
+  const [allMyGroupEvents, setAllMyGroupEvents] = useState({})          // event.id -> event (all user's groups)
   const [myRsvps, setMyRsvps] = useState({})                           // event_id -> status
   const [allRsvps, setAllRsvps] = useState({})                         // event_id -> [{ user_id, status }]
   const [myOverrides, setMyOverrides] = useState(new Set())             // group_event_overrides dates
@@ -55,11 +58,11 @@ export default function MemberPage() {
   useEffect(() => {
     if (!user) return
     registerServiceWorker()
-    loadAll()
+    loadAll(true)
   }, [user, groupId])
 
-  async function loadAll() {
-    setLoading(true)
+  async function loadAll(showSpinner = false) {
+    if (showSpinner) setLoading(true)
     try {
       // Load group
       const { data: g } = await supabase.from('groups').select('*').eq('token', groupToken).maybeSingle()
@@ -75,27 +78,87 @@ export default function MemberPage() {
       setMyMember(me || null)
       if (!me) { navigate('/app'); return }
 
-      // All groups this user is in (for switcher)
+      // All groups this user is in (for switcher + personal calendar)
       const { data: myMems } = await supabase
         .from('members').select('*, groups(id, name, token)').eq('user_id', user.id)
       setAllMyGroups(myMems || [])
+
+      // Load events from ALL user's groups for personal calendar view
+      const allGroupIds = (myMems || []).map(m => m.group_id)
+      if (allGroupIds.length) {
+        const { data: allEvs } = await supabase
+          .from('group_events').select('*').in('group_id', allGroupIds)
+        const allEvMap = {}
+        ;(allEvs || []).forEach(e => { allEvMap[e.id] = e })
+        setAllMyGroupEvents(allEvMap)
+      }
 
       // Load user_unavailability for all members in this group
       const memberUserIds = (members || []).map(m => m.user_id)
       const { data: unavail } = await supabase
         .from('user_unavailability')
-        .select('user_id, date')
+        .select('user_id, date, status')
         .in('user_id', memberUserIds)
 
       const mySet = new Set()
+      const myTentSet = new Set()
       const memberMap = {}
-      ;(unavail || []).forEach(({ user_id, date }) => {
-        if (user_id === user.id) mySet.add(date)
-        if (!memberMap[user_id]) memberMap[user_id] = new Set()
-        memberMap[user_id].add(date)
+      const memberTentMap = {}
+      ;(unavail || []).forEach(({ user_id, date, status }) => {
+        if (user_id === user.id) {
+          if (status === 'tentative') myTentSet.add(date)
+          else mySet.add(date)
+        }
+        if (status === 'tentative') {
+          if (!memberTentMap[user_id]) memberTentMap[user_id] = new Set()
+          memberTentMap[user_id].add(date)
+        } else {
+          if (!memberMap[user_id]) memberMap[user_id] = new Set()
+          memberMap[user_id].add(date)
+        }
       })
       setMyUnavailDates(mySet)
+      setMyTentativeDates(myTentSet)
+
+      // Load group events from ALL other groups any member belongs to, and merge
+      // their dates into memberMap so they show as unavailable in this group's calendar.
+      // Uses a security-definer RPC to bypass the members RLS policy, which would
+      // otherwise block users from seeing memberships in groups they don't belong to.
+      const { data: otherMems } = await supabase.rpc('get_other_group_memberships', {
+        member_ids: memberUserIds,
+        exclude_group: g.id
+      })
+
+      if (otherMems?.length) {
+        const otherGroupIds = [...new Set(otherMems.map(m => m.group_id))]
+        const { data: otherEvents } = await supabase
+          .from('group_events')
+          .select('group_id, start_date, end_date')
+          .in('group_id', otherGroupIds)
+
+        const groupUserMap = {}
+        otherMems.forEach(({ user_id, group_id }) => {
+          if (!groupUserMap[group_id]) groupUserMap[group_id] = new Set()
+          groupUserMap[group_id].add(user_id)
+        })
+
+        ;(otherEvents || []).forEach(event => {
+          const affected = groupUserMap[event.group_id] || new Set()
+          const cur = new Date(event.start_date + 'T00:00:00')
+          const end = new Date((event.end_date || event.start_date) + 'T00:00:00')
+          while (cur <= end) {
+            const ds = formatDate(cur)
+            affected.forEach(userId => {
+              if (!memberMap[userId]) memberMap[userId] = new Set()
+              memberMap[userId].add(ds)
+            })
+            cur.setDate(cur.getDate() + 1)
+          }
+        })
+      }
+
       setMembersUnavail(memberMap)
+      setMembersTentative(memberTentMap)
 
       // Load personal events for current user
       const { data: personalEvs } = await supabase
@@ -153,12 +216,12 @@ export default function MemberPage() {
     } finally { setLoading(false) }
   }
 
-  // Realtime
+  // Realtime — listen to all groups the user is in so cross-group events propagate
   useEffect(() => {
     if (!group) return
     const channel = supabase.channel(`group-${group.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'user_unavailability' }, () => loadAll())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'group_events', filter: `group_id=eq.${group.id}` }, () => loadAll())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'group_events' }, () => loadAll())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'event_rsvps' }, () => loadAll())
       .subscribe()
     return () => supabase.removeChannel(channel)
@@ -194,21 +257,43 @@ export default function MemberPage() {
     return result
   }, [membersUnavail, groupEvents, allMembers])
 
+  // Tentative count per date (shown as amber in group view)
+  const effectiveTentative = useMemo(() => {
+    const result = {}
+    Object.entries(membersTentative).forEach(([, dates]) => {
+      dates.forEach(date => {
+        result[date] = (result[date] || 0) + 1
+      })
+    })
+    return result
+  }, [membersTentative])
+
   async function handlePersonalToggle(dateStr) {
     if (!user || toggling) return
     setToggling(dateStr)
-    const isOut = myUnavailDates.has(dateStr)
+    const isUnavail = myUnavailDates.has(dateStr)
+    const isTentative = myTentativeDates.has(dateStr)
     try {
-      if (isOut) {
+      if (isTentative) {
+        // tentative → available: remove row entirely
         await supabase.from('user_unavailability').delete().eq('user_id', user.id).eq('date', dateStr)
-        setMyUnavailDates(prev => { const n = new Set(prev); n.delete(dateStr); return n })
+        setMyTentativeDates(prev => { const n = new Set(prev); n.delete(dateStr); return n })
         setMembersUnavail(prev => {
           const n = { ...prev }
           if (n[user.id]) { n[user.id] = new Set(n[user.id]); n[user.id].delete(dateStr) }
           return n
         })
+      } else if (isUnavail) {
+        // unavailable → tentative: update status
+        await supabase.from('user_unavailability')
+          .update({ status: 'tentative' })
+          .eq('user_id', user.id).eq('date', dateStr)
+        setMyUnavailDates(prev => { const n = new Set(prev); n.delete(dateStr); return n })
+        setMyTentativeDates(prev => new Set([...prev, dateStr]))
+        // membersUnavail date stays — tentative still counts as a conflict
       } else {
-        await supabase.from('user_unavailability').insert({ user_id: user.id, date: dateStr })
+        // available → unavailable: insert row
+        await supabase.from('user_unavailability').insert({ user_id: user.id, date: dateStr, status: 'unavailable' })
         setMyUnavailDates(prev => new Set([...prev, dateStr]))
         setMembersUnavail(prev => {
           const n = { ...prev }
@@ -255,7 +340,7 @@ export default function MemberPage() {
     const newMembersUnavail = { ...membersUnavail, [user.id]: new Set(membersUnavail[user.id] || []) }
     for (const d of dates) {
       if (!myUnavailDates.has(d)) {
-        await supabase.from('user_unavailability').insert({ user_id: user.id, date: d })
+        await supabase.from('user_unavailability').insert({ user_id: user.id, date: d, status: 'unavailable' })
         newUnavail.add(d)
         newMembersUnavail[user.id].add(d)
       }
@@ -294,17 +379,43 @@ export default function MemberPage() {
       start_time: isTimed && startTime ? startTime : null,
       end_time: isTimed && endTime ? endTime : null,
     }
+    let savedData = null
     if (existing) {
       const { data } = await supabase.from('group_events')
         .update(payload).eq('id', existing.id).select().single()
-      if (data) setGroupEvents(prev => ({ ...prev, [dateStr]: data }))
+      if (data) {
+        setGroupEvents(prev => ({ ...prev, [dateStr]: data }))
+        setAllMyGroupEvents(prev => ({ ...prev, [data.id]: data }))
+        savedData = data
+      }
     } else {
       const { data } = await supabase.from('group_events')
         .insert({ ...payload, group_id: group.id, created_by: user.id }).select().single()
       if (data) {
         setGroupEvents(prev => ({ ...prev, [dateStr]: data }))
+        setAllMyGroupEvents(prev => ({ ...prev, [data.id]: data }))
+        savedData = data
         const shortDate = dateStr.split('-').reverse().slice(0, 2).join(' ')
         sendEventPushNotification(data.id, group.id, title, shortDate, user.id)
+      }
+    }
+
+    // Write a user_unavailability row for every member for every date in the event range.
+    // This triggers realtime for members who share a group with any of those members,
+    // propagating cross-group unavailability without needing a separate subscription.
+    if (savedData) {
+      const dates = getDatesInRange(savedData.start_date, savedData.end_date || savedData.start_date)
+      const rows = []
+      for (const member of allMembers) {
+        for (const d of dates) {
+          rows.push({ user_id: member.user_id, date: d, status: 'unavailable' })
+        }
+      }
+      // Upsert without ignoreDuplicates so an UPDATE fires even if the row already
+      // exists — this guarantees a WAL event that triggers realtime for other members.
+      if (rows.length) {
+        await supabase.from('user_unavailability')
+          .upsert(rows, { onConflict: 'user_id,date' })
       }
     }
   }
@@ -312,20 +423,38 @@ export default function MemberPage() {
   async function handleDeleteGroupEvent(dateStr) {
     const existing = groupEvents[dateStr]
     if (!existing) return
+    // Remove the unavailability rows written at save time before deleting the event
+    const dates = getDatesInRange(existing.start_date, existing.end_date || existing.start_date)
+    for (const member of allMembers) {
+      for (const d of dates) {
+        await supabase.from('user_unavailability')
+          .delete().eq('user_id', member.user_id).eq('date', d)
+      }
+    }
     await supabase.from('group_events').delete().eq('id', existing.id)
     setGroupEvents(prev => { const n = { ...prev }; delete n[dateStr]; return n })
+    setAllMyGroupEvents(prev => { const n = { ...prev }; delete n[existing.id]; return n })
   }
 
   async function handleRsvp(eventId, status) {
-    await supabase.from('event_rsvps').upsert(
-      { event_id: eventId, user_id: user.id, status, updated_at: new Date().toISOString() },
-      { onConflict: 'event_id,user_id' }
-    )
-    setMyRsvps(prev => ({ ...prev, [eventId]: status }))
-    setAllRsvps(prev => {
-      const existing = (prev[eventId] || []).filter(r => r.user_id !== user.id)
-      return { ...prev, [eventId]: [...existing, { user_id: user.id, status }] }
-    })
+    if (status === null) {
+      await supabase.from('event_rsvps').delete()
+        .eq('event_id', eventId).eq('user_id', user.id)
+      setMyRsvps(prev => { const n = { ...prev }; delete n[eventId]; return n })
+      setAllRsvps(prev => ({
+        ...prev, [eventId]: (prev[eventId] || []).filter(r => r.user_id !== user.id)
+      }))
+    } else {
+      await supabase.from('event_rsvps').upsert(
+        { event_id: eventId, user_id: user.id, status, updated_at: new Date().toISOString() },
+        { onConflict: 'event_id,user_id' }
+      )
+      setMyRsvps(prev => ({ ...prev, [eventId]: status }))
+      setAllRsvps(prev => {
+        const existing = (prev[eventId] || []).filter(r => r.user_id !== user.id)
+        return { ...prev, [eventId]: [...existing, { user_id: user.id, status }] }
+      })
+    }
   }
 
   async function handleOverrideToggle(dateStr) {
@@ -342,8 +471,14 @@ export default function MemberPage() {
     }
   }
 
+  function hasEventOnDate(dateStr) {
+    return Object.values(allMyGroupEvents).some(e =>
+      dateStr >= e.start_date && dateStr <= (e.end_date || e.start_date)
+    )
+  }
+
   function handleDayClick(dateStr) {
-    if (displayMode === 'master' || groupEvents[dateStr]) {
+    if (displayMode === 'master' || groupEvents[dateStr] || hasEventOnDate(dateStr)) {
       setModalDate(dateStr); return
     }
     handlePersonalToggle(dateStr)
@@ -386,29 +521,50 @@ export default function MemberPage() {
 
   const threshold = group ? { type: group.threshold_type, value: group.threshold_value } : null
 
-  // Modal unavailability set for the selected date
+  // Modal unavailability set for the selected date:
+  // a member is shown as unavailable if they have a personal conflict on that date,
+  // or if they've explicitly declined a group event's RSVP.
   const modalUnavailSet = useMemo(() => {
     if (!modalDate) return new Set()
     const s = new Set()
+
+    // Personal unavailability
     Object.entries(membersUnavail).forEach(([userId, dates]) => {
       if (dates.has(modalDate)) s.add(userId)
     })
+
+    // Declined RSVPs for the event on this date
     const eventOnDate = Object.values(groupEvents).find(e =>
       modalDate >= e.start_date && modalDate <= (e.end_date || e.start_date)
     )
     if (eventOnDate) {
-      allMembers.forEach(m => { s.add(m.user_id) })
+      const rsvps = allRsvps[eventOnDate.id] || []
+      rsvps.forEach(r => { if (r.status === 'declined') s.add(r.user_id) })
+      // Overrides mean "I'm available despite a conflict" — remove from unavailable
       if (myOverrides.has(modalDate)) s.delete(user.id)
     }
+
     return s
-  }, [modalDate, membersUnavail, groupEvents, allMembers, myOverrides, user])
+  }, [modalDate, membersUnavail, groupEvents, allRsvps, myOverrides, user])
+
+  const modalTentativeSet = useMemo(() => {
+    if (!modalDate) return new Set()
+    const s = new Set()
+    Object.entries(membersTentative).forEach(([userId, dates]) => {
+      if (dates.has(modalDate)) s.add(userId)
+    })
+    return s
+  }, [modalDate, membersTentative])
 
   const modalEvent = useMemo(() => {
     if (!modalDate) return null
-    return Object.values(groupEvents).find(e =>
+    const pool = displayMode === 'personal'
+      ? Object.values(allMyGroupEvents)
+      : Object.values(groupEvents)
+    return pool.find(e =>
       modalDate >= e.start_date && modalDate <= (e.end_date || e.start_date)
     ) || null
-  }, [modalDate, groupEvents])
+  }, [modalDate, groupEvents, allMyGroupEvents, displayMode])
 
   const modalPersonalEvent = useMemo(() => {
     if (!modalDate) return null
@@ -486,13 +642,17 @@ export default function MemberPage() {
       <main className="flex-1 px-4 pb-4 overflow-hidden">
         {calView === 'month'
           ? <MonthView year={year} month={month} myUnavailable={myUnavailDates}
-              allUnavailability={effectiveUnavailability} memberCount={allMembers.length}
-              threshold={threshold} viewMode={displayMode} groupEvents={groupEvents}
+              myTentative={myTentativeDates}
+              allUnavailability={effectiveUnavailability} effectiveTentative={effectiveTentative}
+              memberCount={allMembers.length} threshold={threshold} viewMode={displayMode}
+              groupEvents={displayMode === 'personal' ? allMyGroupEvents : groupEvents}
               onDayClick={handleDayClick} onLongPress={handleLongPress}
               onPrev={prevPeriod} onNext={nextPeriod} />
           : <YearView year={year} myUnavailable={myUnavailDates}
-              allUnavailability={effectiveUnavailability} memberCount={allMembers.length}
-              threshold={threshold} viewMode={displayMode} groupEvents={groupEvents}
+              myTentative={myTentativeDates}
+              allUnavailability={effectiveUnavailability} effectiveTentative={effectiveTentative}
+              memberCount={allMembers.length} threshold={threshold} viewMode={displayMode}
+              groupEvents={displayMode === 'personal' ? allMyGroupEvents : groupEvents}
               onMonthClick={(mi) => { setMonth(mi); setCalView('month') }}
               onPrev={prevPeriod} onNext={nextPeriod} />
         }
@@ -504,6 +664,7 @@ export default function MemberPage() {
         {displayMode === 'personal'
           ? <>
               <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-500" />Unavailable</span>
+              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-500" />Tentative</span>
               <span className="text-[#aaa] text-[10px]">Tap to toggle · Long press to add event</span>
             </>
           : <>
@@ -518,6 +679,7 @@ export default function MemberPage() {
           dateStr={modalDate}
           members={allMembers}
           unavailableSet={modalUnavailSet}
+          tentativeSet={modalTentativeSet}
           event={modalEvent}
           myId={user.id}
           myOverrides={myOverrides}
@@ -525,6 +687,10 @@ export default function MemberPage() {
           allRsvps={allRsvps}
           displayMode={displayMode}
           personalEvent={modalPersonalEvent}
+          canManageEvent={!modalEvent || modalEvent.group_id === group?.id}
+          eventGroupName={modalEvent && modalEvent.group_id !== group?.id
+            ? allMyGroups.find(m => m.group_id === modalEvent.group_id)?.groups?.name
+            : null}
           onClose={() => setModalDate(null)}
           onSaveGroupEvent={handleSaveGroupEvent}
           onDeleteGroupEvent={handleDeleteGroupEvent}

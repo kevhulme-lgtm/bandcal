@@ -2,7 +2,7 @@ self.addEventListener('push', event => {
   if (!event.data) return
   const data = event.data.json()
   event.waitUntil(
-    self.registration.showNotification(data.title || 'BandCal', {
+    self.registration.showNotification(data.title || 'Lineup', {
       body: data.body || '',
       icon: data.icon || '/icon-192.png',
       badge: data.badge || '/icon-192.png',

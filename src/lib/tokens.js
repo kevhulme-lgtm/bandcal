@@ -1,7 +1,7 @@
 // All identity is token-based. Tokens are UUIDs stored in localStorage.
 // A user may have multiple tokens (one per group) merged into one identity.
 
-const TOKENS_KEY = 'bandcal_tokens'
+const TOKENS_KEY = 'lineup_tokens'
 
 export function getStoredTokens() {
   try {

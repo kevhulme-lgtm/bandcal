@@ -1,6 +1,6 @@
 {
-  "name": "BandCal",
-  "short_name": "BandCal",
+  "name": "Lineup",
+  "short_name": "Lineup",
   "description": "Band availability, zero hassle.",
   "start_url": "/",
   "display": "standalone",
