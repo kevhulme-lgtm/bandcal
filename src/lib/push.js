@@ -55,6 +55,10 @@ export async function subscribeToPush(supabase, memberId) {
   }
 }
 
+export async function sendEventPush(groupId, title, startDate, creatorNickname, url) {
+  return sendEventPushNotification(null, groupId, title, startDate, null)
+}
+
 export async function sendEventPushNotification(eventId, groupId, title, startDate, createdByMemberId) {
   try {
     await fetch('/.netlify/functions/send-push', {

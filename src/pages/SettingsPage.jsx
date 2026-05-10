@@ -102,7 +102,6 @@ export default function SettingsPage() {
     if (!newGroupName.trim()) return
     setCreating(true)
     try {
-      const { createClient } = await import('@supabase/supabase-js')
       const ownerToken = uuidv4()
       const groupToken = uuidv4()
       const { data: group, error: gErr } = await supabase
@@ -281,7 +280,7 @@ export default function SettingsPage() {
             />
             <button
               onClick={createNewGroup}
-              disabled={creatingGroup || !newGroupName.trim()}
+              disabled={creating || !newGroupName.trim()}
               className="px-4 py-3 rounded-2xl bg-[#1a1a18] dark:bg-[#e8e6e0] text-white dark:text-[#1a1a18]
                 font-body text-sm font-semibold disabled:opacity-40"
             >
