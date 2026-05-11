@@ -89,6 +89,7 @@ export default function DayModal({
   const [personalTitle, setPersonalTitle] = useState('')
   const [personalNotes, setPersonalNotes] = useState('')
   const [personalEndDate, setPersonalEndDate] = useState('')
+  const [personalIsTentative, setPersonalIsTentative] = useState(false)
   const [savingPersonal, setSavingPersonal] = useState(false)
   const [confirmDeletePersonal, setConfirmDeletePersonal] = useState(false)
 
@@ -112,8 +113,9 @@ export default function DayModal({
       setPersonalTitle(personalEvent.title || '')
       setPersonalNotes(personalEvent.notes || '')
       setPersonalEndDate(personalEvent.end_date && personalEvent.end_date !== personalEvent.date ? personalEvent.end_date : '')
+      setPersonalIsTentative(!!personalEvent.is_tentative)
     } else {
-      setPersonalTitle(''); setPersonalNotes(''); setPersonalEndDate('')
+      setPersonalTitle(''); setPersonalNotes(''); setPersonalEndDate(''); setPersonalIsTentative(false)
     }
     setEditingPersonal(false)
     setConfirmDeletePersonal(false)
@@ -145,7 +147,7 @@ export default function DayModal({
   async function handleSavePersonalEvent() {
     if (!personalTitle.trim()) return
     setSavingPersonal(true)
-    await onSavePersonalEvent(dateStr, personalEndDate || dateStr, personalTitle.trim(), personalNotes.trim())
+    await onSavePersonalEvent(dateStr, personalEndDate || dateStr, personalTitle.trim(), personalNotes.trim(), personalIsTentative)
     setSavingPersonal(false)
     setEditingPersonal(false)
   }
@@ -391,7 +393,9 @@ export default function DayModal({
             <>
               {hasPersonalEvent && !editingPersonal && (
                 <div className="rounded-2xl p-4 border bg-purple-500/10 border-purple-400/20">
-                  <p className="text-xs font-medium uppercase tracking-widest text-purple-500 mb-1">Personal Event</p>
+                  <p className="text-xs font-medium uppercase tracking-widest text-purple-500 mb-1">
+                    Personal Event{personalEvent.is_tentative && <span className="ml-2 text-amber-500">· Tentative</span>}
+                  </p>
                   <h3 className="font-display text-2xl tracking-wider text-[#1a1a18] dark:text-[#e8e6e0]">{personalEvent.title}</h3>
                   {personalEvent.end_date && personalEvent.end_date !== personalEvent.date && (
                     <p className="text-xs text-[#999] mt-1">{formatDateLabel(personalEvent.date)} — {formatDateLabel(personalEvent.end_date)}</p>
@@ -430,6 +434,15 @@ export default function DayModal({
                       className="w-full px-4 py-3 rounded-2xl bg-white dark:bg-white/5 border border-black/10 dark:border-white/10
                         font-body text-[#1a1a18] dark:text-[#e8e6e0] focus:outline-none focus:ring-2 focus:ring-purple-400/50" />
                   </div>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <div onClick={() => setPersonalIsTentative(v => !v)}
+                      className={`w-11 h-6 rounded-full transition-colors flex-shrink-0 relative ${personalIsTentative ? 'bg-amber-500' : 'bg-black/20 dark:bg-white/20'}`}>
+                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${personalIsTentative ? 'translate-x-5' : ''}`} />
+                    </div>
+                    <span className="font-body text-sm text-[#1a1a18] dark:text-[#e8e6e0]">
+                      Tentative <span className="text-[#888]">(shows as maybe to groups)</span>
+                    </span>
+                  </label>
                   <p className="text-xs text-[#aaa] font-body">Details are private. Your unavailability will be visible to all your groups.</p>
                   <div className="flex gap-2">
                     <button onClick={handleSavePersonalEvent} disabled={savingPersonal || !personalTitle.trim()}

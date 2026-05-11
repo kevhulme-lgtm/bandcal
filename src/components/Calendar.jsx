@@ -93,18 +93,17 @@ function buildEventDayMap(groupEvents) {
   return map
 }
 
-function DayCell({ dateStr, status, isToday, isFaded, onClick, onLongPress, viewMode, eventInfo, isDeclined }) {
+function DayCell({ dateStr, status, isToday, isFaded, onClick, onLongPress, viewMode, eventInfo, isDeclined, isOtherGroup }) {
   const day = parseInt(dateStr.split('-')[2], 10)
   const hasEvent = !!eventInfo
-  const isTimed = hasEvent && eventInfo.event?.is_timed
 
   let baseBg = ''
   if (hasEvent && isDeclined) {
     baseBg = 'bg-black/5 dark:bg-white/5 border-black/10 dark:border-white/10'
+  } else if (hasEvent && isOtherGroup) {
+    baseBg = 'bg-red-500/20 border-red-400/40'
   } else if (hasEvent) {
-    baseBg = isTimed
-      ? 'bg-amber-500/20 border-amber-400/40'
-      : 'bg-blue-500/20 border-blue-400/40'
+    baseBg = 'bg-blue-500/20 border-blue-400/40'
   } else if (viewMode === 'master') {
     if (status.master === 'avail') baseBg = 'bg-green-500/20 border-green-400/50'
     else if (status.master === 'unavail') baseBg = 'bg-red-500/20 border-red-400/50'
@@ -147,7 +146,7 @@ function DayCell({ dateStr, status, isToday, isFaded, onClick, onLongPress, view
     >
       <span className="relative z-10">{day}</span>
       {hasEvent && eventInfo.isStart && !eventInfo.isMultiDay && (
-        <span className={`absolute bottom-0.5 right-0.5 w-1.5 h-1.5 rounded-full ${isTimed ? 'bg-amber-400' : 'bg-blue-400'}`} />
+        <span className={`absolute bottom-0.5 right-0.5 w-1.5 h-1.5 rounded-full ${isOtherGroup ? 'bg-red-400' : 'bg-blue-400'}`} />
       )}
       {!hasEvent && viewMode === 'master' && status.master === 'partial' && (
         <span className="absolute bottom-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-amber-400" />
@@ -156,7 +155,7 @@ function DayCell({ dateStr, status, isToday, isFaded, onClick, onLongPress, view
   )
 }
 
-export function MonthView({ year, month, myUnavailable, myTentative, allUnavailability, effectiveTentative, memberCount, threshold, viewMode, groupEvents = {}, declinedEventIds, onDayClick, onLongPress, onPrev, onNext }) {
+export function MonthView({ year, month, myUnavailable, myTentative, allUnavailability, effectiveTentative, memberCount, threshold, viewMode, groupEvents = {}, declinedEventIds, currentGroupId, onDayClick, onLongPress, onPrev, onNext }) {
   const today = formatDate(new Date())
   const { onTouchStart, onTouchEnd } = useSwipe(onNext, onPrev)
   const eventDayMap = useMemo(() => buildEventDayMap(groupEvents), [groupEvents])
@@ -214,6 +213,7 @@ export function MonthView({ year, month, myUnavailable, myTentative, allUnavaila
               viewMode={viewMode}
               eventInfo={eventDayMap[dateStr] || null}
               isDeclined={!!(declinedEventIds && eventDayMap[dateStr] && declinedEventIds.has(eventDayMap[dateStr].event?.id))}
+              isOtherGroup={!!(currentGroupId && eventDayMap[dateStr] && eventDayMap[dateStr].event?.group_id && eventDayMap[dateStr].event.group_id !== currentGroupId)}
             />
           )
         })}
