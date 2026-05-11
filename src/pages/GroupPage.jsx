@@ -21,6 +21,8 @@ export default function GroupPage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => { if (user) loadGroup() }, [groupToken, user])
 
@@ -101,6 +103,13 @@ export default function GroupPage() {
     setSaving(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
+  }
+
+  async function deleteGroup() {
+    setDeleting(true)
+    const { error } = await supabase.rpc('delete_group', { group_id_param: group.id })
+    if (error) { setDeleting(false); setConfirmDelete(false); setError('Delete failed: ' + error.message); return }
+    navigate('/app', { replace: true })
   }
 
   if (loading) return (
@@ -217,13 +226,39 @@ export default function GroupPage() {
       </section>
 
       {/* Open calendar */}
-      <section>
+      <section className="mb-8">
         <button
           onClick={() => navigate(`/app/g/${groupToken}/m/${group.id}`)}
           className="w-full py-3.5 rounded-2xl border border-black/10 dark:border-white/10 font-body text-sm font-medium
             text-[#1a1a18] dark:text-[#e8e6e0] flex items-center justify-center gap-2 hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
           <Calendar size={16} /> Open group calendar
         </button>
+      </section>
+
+      {/* Delete group */}
+      <section>
+        {confirmDelete ? (
+          <div className="bg-red-500/10 border border-red-400/30 rounded-2xl p-4 space-y-3">
+            <p className="font-body text-sm text-red-500 font-medium">Delete {group.name}?</p>
+            <p className="font-body text-xs text-[#888]">This removes the group, all members, events and invites. This can't be undone.</p>
+            <div className="flex gap-2">
+              <button onClick={deleteGroup} disabled={deleting}
+                className="flex-1 py-2.5 rounded-xl bg-red-500 text-white font-body text-sm font-medium disabled:opacity-50 transition-all">
+                {deleting ? 'Deleting…' : 'Yes, delete'}
+              </button>
+              <button onClick={() => setConfirmDelete(false)} disabled={deleting}
+                className="flex-1 py-2.5 rounded-xl border border-black/10 dark:border-white/10 font-body text-sm text-[#888]">
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => setConfirmDelete(true)}
+            className="w-full py-3.5 rounded-2xl border border-red-400/30 font-body text-sm font-medium
+              text-red-500 hover:bg-red-500/5 transition-colors">
+            Delete group
+          </button>
+        )}
       </section>
     </div>
   )
