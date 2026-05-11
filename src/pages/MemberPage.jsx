@@ -7,18 +7,7 @@ import { MonthView, YearView, CalendarViewToggle } from '../components/Calendar'
 import DayModal from '../components/DayModal'
 import EventBanner from '../components/EventBanner'
 import { Settings, Crown, Users, ChevronLeft } from '../components/Icons'
-import { registerServiceWorker, requestPushPermission, isPushSupported, sendEventPushNotification } from '../lib/push'
-
-const SEEN_KEY = 'lineup_seen_events'
-function getSeenEventIds() {
-  try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')) }
-  catch { return new Set() }
-}
-function markEventSeen(id) {
-  const seen = getSeenEventIds()
-  seen.add(id)
-  localStorage.setItem(SEEN_KEY, JSON.stringify([...seen]))
-}
+import { registerServiceWorker, requestPushPermission, isPushSupported, sendEventPushNotification, subscribeToPush } from '../lib/push'
 
 export default function MemberPage() {
   const { groupToken, groupId } = useParams()
@@ -41,7 +30,6 @@ export default function MemberPage() {
   const [myOverrides, setMyOverrides] = useState(new Set())             // group_event_overrides dates
   const [myPersonalEvents, setMyPersonalEvents] = useState({})          // date -> personal_event
 
-  const [unseenEvents, setUnseenEvents] = useState([])
   const [pushGranted, setPushGranted] = useState(false)
   const [showPushPrompt, setShowPushPrompt] = useState(false)
 
@@ -171,15 +159,8 @@ export default function MemberPage() {
       const { data: events } = await supabase
         .from('group_events').select('*').eq('group_id', g.id).order('start_date')
       const evMap = {}
-      const today = formatDate(new Date())
-      const seen = getSeenEventIds()
-      const unseen = []
-      ;(events || []).forEach(e => {
-        evMap[e.start_date] = e
-        if (e.start_date >= today && !seen.has(e.id) && e.created_by !== user.id) unseen.push(e)
-      })
+      ;(events || []).forEach(e => { evMap[e.start_date] = e })
       setGroupEvents(evMap)
-      setUnseenEvents(unseen)
 
       // Load RSVPs for all events in this group
       if (events?.length) {
@@ -210,6 +191,7 @@ export default function MemberPage() {
       if (isPushSupported()) {
         const perm = Notification.permission
         setPushGranted(perm === 'granted')
+        if (perm === 'granted' && me) subscribeToPush(supabase, me.id)
         if (perm === 'default') setShowPushPrompt(true)
       }
 
@@ -492,23 +474,17 @@ export default function MemberPage() {
   }
 
   function handleBannerNavigate(event) {
-    markEventSeen(event.id)
-    setUnseenEvents(prev => prev.filter(e => e.id !== event.id))
     const [y, m] = event.start_date.split('-').map(Number)
     setYear(y); setMonth(m - 1); setCalView('month')
     setDisplayMode('master')
     setTimeout(() => setModalDate(event.start_date), 100)
   }
 
-  function handleDismissAll() {
-    unseenEvents.forEach(e => markEventSeen(e.id))
-    setUnseenEvents([])
-  }
-
   async function handleEnablePush() {
     setShowPushPrompt(false)
     const granted = await requestPushPermission()
     setPushGranted(granted)
+    if (granted && myMember) subscribeToPush(supabase, myMember.id)
   }
 
   function prevPeriod() {
@@ -556,8 +532,24 @@ export default function MemberPage() {
     Object.entries(membersTentative).forEach(([userId, dates]) => {
       if (dates.has(modalDate)) s.add(userId)
     })
+    // Also show 'maybe' RSVPs in the tentative section
+    const eventOnDate = Object.values(groupEvents).find(e =>
+      modalDate >= e.start_date && modalDate <= (e.end_date || e.start_date)
+    )
+    if (eventOnDate) {
+      ;(allRsvps[eventOnDate.id] || []).forEach(r => { if (r.status === 'maybe') s.add(r.user_id) })
+    }
     return s
-  }, [modalDate, membersTentative])
+  }, [modalDate, membersTentative, groupEvents, allRsvps])
+
+  const pendingEvents = useMemo(() => {
+    const today = formatDate(new Date())
+    return Object.values(groupEvents).filter(e =>
+      e.start_date >= today &&
+      e.created_by !== user?.id &&
+      !myRsvps[e.id]
+    )
+  }, [groupEvents, myRsvps, user])
 
   const modalEvent = useMemo(() => {
     if (!modalDate) return null
@@ -622,9 +614,9 @@ export default function MemberPage() {
       )}
 
       <EventBanner
-        unseenEvents={unseenEvents}
+        pendingEvents={pendingEvents}
         onNavigate={handleBannerNavigate}
-        onDismissAll={handleDismissAll}
+        onRsvp={handleRsvp}
       />
 
       <div className="px-4 py-2">

@@ -295,7 +295,7 @@ export default function DayModal({
                       if (myHasOverride) {
                         onOverrideToggle(dateStr)
                       } else {
-                        if (myRsvpStatus === 'declined') onRsvp(event.id, null)
+                        if (myRsvpStatus === 'declined' || myRsvpStatus === 'maybe') onRsvp(event.id, null)
                         onOverrideToggle(dateStr)
                       }
                     }}
@@ -304,7 +304,19 @@ export default function DayModal({
                         ? 'bg-green-500/15 text-green-600 dark:text-green-400 border-green-400/30'
                         : 'border-black/10 dark:border-white/10 text-[#888] hover:border-black/20 dark:hover:border-white/20'
                     }`}>
-                    {myHasOverride ? "✓ I'm available" : "I'm available"}
+                    {myHasOverride ? "✓ Going" : "Going"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (myHasOverride) onOverrideToggle(dateStr)
+                      onRsvp(event.id, myRsvpStatus === 'maybe' ? null : 'maybe')
+                    }}
+                    className={`flex-1 py-2.5 rounded-xl border font-body text-sm font-medium transition-colors ${
+                      myRsvpStatus === 'maybe' && !myHasOverride
+                        ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-400/30'
+                        : 'border-black/10 dark:border-white/10 text-[#888] hover:border-black/20 dark:hover:border-white/20'
+                    }`}>
+                    {myRsvpStatus === 'maybe' && !myHasOverride ? "~ Maybe" : "Maybe"}
                   </button>
                   <button
                     onClick={() => {
@@ -316,7 +328,7 @@ export default function DayModal({
                         ? 'bg-red-500/10 text-red-500 border-red-400/30'
                         : 'border-black/10 dark:border-white/10 text-[#888] hover:border-black/20 dark:hover:border-white/20'
                     }`}>
-                    {myRsvpStatus === 'declined' && !myHasOverride ? "✕ Not available" : "I'm not available"}
+                    {myRsvpStatus === 'declined' && !myHasOverride ? "✕ Can't" : "Can't"}
                   </button>
                 </div>
               )}
