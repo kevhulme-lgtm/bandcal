@@ -19,17 +19,13 @@ function formatTimeDisplay(t) {
   return `${hour}:${String(m).padStart(2, '0')}${ampm}`
 }
 
-const RSVP_OPTIONS = [
-  { status: 'accepted', label: 'Going', color: 'text-green-600 dark:text-green-400', bg: 'bg-green-500/10 border-green-400/30' },
-  { status: 'maybe', label: 'Maybe', color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-500/10 border-amber-400/30' },
-  { status: 'declined', label: "Can't make it", color: 'text-red-500', bg: 'bg-red-500/10 border-red-400/30' },
-]
-
 export default function DayModal({
-  dateStr, members, unavailableSet, event,
+  dateStr, members, unavailableSet, tentativeSet = new Set(), event,
   myId, myOverrides, displayMode,
   myRsvps = {}, allRsvps = {},
   personalEvent,
+  canManageEvent = true,
+  eventGroupName = null,
   onClose,
   onSaveGroupEvent, onDeleteGroupEvent,
   onSavePersonalEvent, onDeletePersonalEvent,
@@ -86,8 +82,9 @@ export default function DayModal({
   const hasGroupEvent = !!event
   const hasPersonalEvent = !!personalEvent
   const myHasOverride = myOverrides?.has(dateStr)
-  const availMembers = members.filter(m => !unavailableSet.has(m.user_id))
   const unavailMembers = members.filter(m => unavailableSet.has(m.user_id))
+  const tentativeMembers = members.filter(m => !unavailableSet.has(m.user_id) && tentativeSet.has(m.user_id))
+  const availMembers = members.filter(m => !unavailableSet.has(m.user_id) && !tentativeSet.has(m.user_id))
   const isMultiDay = hasGroupEvent && event.end_date && event.end_date !== event.start_date
   const groupEventHeaderLabel = hasGroupEvent
     ? (isMultiDay ? `${formatDateLabel(event.start_date)} — ${formatDateLabel(event.end_date)}` : formatDateLabel(event.start_date))
@@ -154,7 +151,7 @@ export default function DayModal({
               {hasGroupEvent && !editingEvent && (
                 <div className={`rounded-2xl p-4 border ${event.is_timed ? 'bg-amber-500/10 border-amber-400/20' : 'bg-blue-500/10 border-blue-400/20'}`}>
                   <p className={`text-xs font-medium uppercase tracking-widest mb-1 ${event.is_timed ? 'text-amber-500' : 'text-blue-500 dark:text-blue-400'}`}>
-                    {event.is_timed ? 'Timed Event' : 'Group Event'}
+                    {eventGroupName ? eventGroupName : (event.is_timed ? 'Timed Event' : 'Group Event')}
                     {event.is_timed && event.start_time && ` · ${formatTimeDisplay(event.start_time)}${event.end_time ? ` – ${formatTimeDisplay(event.end_time)}` : ''}`}
                   </p>
                   <h3 className="font-display text-2xl tracking-wider text-[#1a1a18] dark:text-[#e8e6e0]">{event.title}</h3>
@@ -219,7 +216,7 @@ export default function DayModal({
                 </div>
               )}
 
-              {!editingEvent && (
+              {!editingEvent && canManageEvent && (
                 <div className="flex gap-2 flex-wrap">
                   {!hasGroupEvent && (
                     <button onClick={() => setEditingEvent(true)}
@@ -238,54 +235,42 @@ export default function DayModal({
                         : <button onClick={() => { onDeleteGroupEvent(dateStr); onClose() }}
                             className="px-4 py-2 rounded-xl bg-red-500 text-white font-body text-sm font-medium">Confirm delete</button>
                       }
-                      <button onClick={() => onOverrideToggle(dateStr)}
-                        className={`px-4 py-2 rounded-xl font-body text-sm font-medium border transition-colors ${
-                          myHasOverride
-                            ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-400/20'
-                            : 'bg-black/5 dark:bg-white/5 text-[#888] border-black/10 dark:border-white/10'
-                        }`}>
-                        {myHasOverride ? "✓ I'm free for this" : "I'm free for this"}
-                      </button>
                     </>
                   )}
                 </div>
               )}
 
-              {/* RSVP */}
-              {hasGroupEvent && !editingEvent && (
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-widest text-[#888] mb-2">Your RSVP</p>
-                  <div className="flex gap-2">
-                    {RSVP_OPTIONS.map(opt => (
-                      <button key={opt.status} onClick={() => onRsvp(event.id, opt.status)}
-                        className={`flex-1 py-2 px-2 rounded-xl border font-body text-xs font-medium transition-all ${
-                          myRsvpStatus === opt.status
-                            ? `${opt.bg} ${opt.color}`
-                            : 'border-black/10 dark:border-white/10 text-[#888] hover:border-black/20 dark:hover:border-white/20'
-                        }`}>
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                  {eventRsvps.length > 0 && (
-                    <div className="mt-3 space-y-1">
-                      {RSVP_OPTIONS.map(opt => {
-                        const responding = eventRsvps.filter(r => r.status === opt.status)
-                        if (!responding.length) return null
-                        return (
-                          <div key={opt.status} className="flex items-center gap-2">
-                            <span className={`text-xs font-medium ${opt.color} w-24 flex-shrink-0`}>{opt.label}</span>
-                            <span className="text-xs text-[#888] font-body">
-                              {responding.map(r => {
-                                const m = members.find(mem => mem.user_id === r.user_id)
-                                return m?.display_name || 'Someone'
-                              }).join(', ')}
-                            </span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
+              {/* Availability response — only for current group's events */}
+              {hasGroupEvent && !editingEvent && canManageEvent && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      if (myHasOverride) {
+                        onOverrideToggle(dateStr)
+                      } else {
+                        if (myRsvpStatus === 'declined') onRsvp(event.id, null)
+                        onOverrideToggle(dateStr)
+                      }
+                    }}
+                    className={`flex-1 py-2.5 rounded-xl border font-body text-sm font-medium transition-colors ${
+                      myHasOverride
+                        ? 'bg-green-500/15 text-green-600 dark:text-green-400 border-green-400/30'
+                        : 'border-black/10 dark:border-white/10 text-[#888] hover:border-black/20 dark:hover:border-white/20'
+                    }`}>
+                    {myHasOverride ? "✓ I'm available" : "I'm available"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (myHasOverride) onOverrideToggle(dateStr)
+                      onRsvp(event.id, myRsvpStatus === 'declined' ? null : 'declined')
+                    }}
+                    className={`flex-1 py-2.5 rounded-xl border font-body text-sm font-medium transition-colors ${
+                      myRsvpStatus === 'declined' && !myHasOverride
+                        ? 'bg-red-500/10 text-red-500 border-red-400/30'
+                        : 'border-black/10 dark:border-white/10 text-[#888] hover:border-black/20 dark:hover:border-white/20'
+                    }`}>
+                    {myRsvpStatus === 'declined' && !myHasOverride ? "✕ Not available" : "I'm not available"}
+                  </button>
                 </div>
               )}
 
@@ -301,6 +286,19 @@ export default function DayModal({
                           {unavailMembers.map(m => (
                             <div key={m.id} className="flex items-center gap-3 bg-red-500/10 rounded-xl px-4 py-2.5">
                               <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
+                              <span className="font-body font-medium text-[#1a1a18] dark:text-[#e8e6e0]">{m.display_name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {tentativeMembers.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-widest text-amber-500 mb-2">Tentative</p>
+                        <div className="space-y-2">
+                          {tentativeMembers.map(m => (
+                            <div key={m.id} className="flex items-center gap-3 bg-amber-500/10 rounded-xl px-4 py-2.5">
+                              <span className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0" />
                               <span className="font-body font-medium text-[#1a1a18] dark:text-[#e8e6e0]">{m.display_name}</span>
                             </div>
                           ))}

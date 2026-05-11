@@ -30,12 +30,12 @@ export default function Home() {
           navigate(`/m/${tokens[0]}`, { replace: true })
         } else {
           // Invalid, expired, or network error — clear all tokens and show homepage
-          localStorage.removeItem('bandcal_tokens')
+          localStorage.removeItem('lineup_tokens')
           setLoading(false)
         }
       } catch {
         // Any unexpected error — clear and show homepage, never loop
-        localStorage.removeItem('bandcal_tokens')
+        localStorage.removeItem('lineup_tokens')
         setLoading(false)
       }
     }
@@ -112,7 +112,7 @@ export default function Home() {
       <div className="w-full max-w-sm fade-in">
         {/* Logo */}
         <div className="text-center mb-10">
-          <h1 className="font-display text-6xl tracking-widest text-[#1a1a18] dark:text-[#e8e6e0]">BANDCAL</h1>
+          <h1 className="font-display text-6xl tracking-widest text-[#1a1a18] dark:text-[#e8e6e0]">LINEUP</h1>
           <p className="font-body text-sm text-[#888] mt-1 tracking-wide">Band availability, zero hassle.</p>
         </div>
 
