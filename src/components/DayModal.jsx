@@ -203,8 +203,8 @@ export default function DayModal({
                   {event.notes && <p className="font-body text-sm text-[#666] dark:text-[#999] mt-2 whitespace-pre-line">{event.notes}</p>}
                   <button
                     onClick={() => downloadICS({ title: event.title, startDate: event.start_date, endDate: event.end_date, notes: event.notes, startTime: event.start_time?.slice(0,5), endTime: event.end_time?.slice(0,5) })}
-                    className="mt-3 text-xs font-body text-[#888] hover:text-[#555] dark:hover:text-[#bbb] underline transition-colors">
-                    Add to calendar
+                    className="mt-3 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/5 dark:bg-white/10 font-body text-xs font-medium text-[#555] dark:text-[#bbb] hover:bg-black/10 dark:hover:bg-white/15 transition-colors">
+                    + Add to calendar
                   </button>
                 </div>
               )}
@@ -404,8 +404,8 @@ export default function DayModal({
                   <p className="text-xs text-[#aaa] mt-2">Only you can see this. Your unavailability is shared with all your groups.</p>
                   <button
                     onClick={() => downloadICS({ title: personalEvent.title, startDate: personalEvent.date, endDate: personalEvent.end_date, notes: personalEvent.notes })}
-                    className="mt-3 text-xs font-body text-[#888] hover:text-[#555] dark:hover:text-[#bbb] underline transition-colors">
-                    Add to calendar
+                    className="mt-3 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/5 dark:bg-white/10 font-body text-xs font-medium text-[#555] dark:text-[#bbb] hover:bg-black/10 dark:hover:bg-white/15 transition-colors">
+                    + Add to calendar
                   </button>
                 </div>
               )}
