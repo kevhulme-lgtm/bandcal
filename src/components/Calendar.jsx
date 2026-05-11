@@ -93,13 +93,15 @@ function buildEventDayMap(groupEvents) {
   return map
 }
 
-function DayCell({ dateStr, status, isToday, isFaded, onClick, onLongPress, viewMode, eventInfo }) {
+function DayCell({ dateStr, status, isToday, isFaded, onClick, onLongPress, viewMode, eventInfo, isDeclined }) {
   const day = parseInt(dateStr.split('-')[2], 10)
   const hasEvent = !!eventInfo
   const isTimed = hasEvent && eventInfo.event?.is_timed
 
   let baseBg = ''
-  if (hasEvent) {
+  if (hasEvent && isDeclined) {
+    baseBg = 'bg-black/5 dark:bg-white/5 border-black/10 dark:border-white/10'
+  } else if (hasEvent) {
     baseBg = isTimed
       ? 'bg-amber-500/20 border-amber-400/40'
       : 'bg-blue-500/20 border-blue-400/40'
@@ -138,7 +140,7 @@ function DayCell({ dateStr, status, isToday, isFaded, onClick, onLongPress, view
         font-body font-medium text-sm transition-all duration-150 active:scale-95
         select-none
         ${baseBg} ${spanClass} ${todayRing}
-        ${isFaded ? 'opacity-20' : 'opacity-100'}
+        ${isFaded ? 'opacity-20' : isDeclined ? 'opacity-50' : 'opacity-100'}
         ${onClick ? 'cursor-pointer' : 'cursor-default'}
         aspect-square w-full
       `}
@@ -154,7 +156,7 @@ function DayCell({ dateStr, status, isToday, isFaded, onClick, onLongPress, view
   )
 }
 
-export function MonthView({ year, month, myUnavailable, myTentative, allUnavailability, effectiveTentative, memberCount, threshold, viewMode, groupEvents = {}, onDayClick, onLongPress, onPrev, onNext }) {
+export function MonthView({ year, month, myUnavailable, myTentative, allUnavailability, effectiveTentative, memberCount, threshold, viewMode, groupEvents = {}, declinedEventIds, onDayClick, onLongPress, onPrev, onNext }) {
   const today = formatDate(new Date())
   const { onTouchStart, onTouchEnd } = useSwipe(onNext, onPrev)
   const eventDayMap = useMemo(() => buildEventDayMap(groupEvents), [groupEvents])
@@ -211,6 +213,7 @@ export function MonthView({ year, month, myUnavailable, myTentative, allUnavaila
               onLongPress={onLongPress}
               viewMode={viewMode}
               eventInfo={eventDayMap[dateStr] || null}
+              isDeclined={!!(declinedEventIds && eventDayMap[dateStr] && declinedEventIds.has(eventDayMap[dateStr].event?.id))}
             />
           )
         })}

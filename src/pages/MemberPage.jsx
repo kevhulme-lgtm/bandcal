@@ -542,6 +542,10 @@ export default function MemberPage() {
     return s
   }, [modalDate, membersTentative, groupEvents, allRsvps])
 
+  const declinedEventIds = useMemo(() => {
+    return new Set(Object.entries(myRsvps).filter(([, s]) => s === 'declined').map(([id]) => id))
+  }, [myRsvps])
+
   const pendingEvents = useMemo(() => {
     const today = formatDate(new Date())
     return Object.values(groupEvents).filter(e =>
@@ -641,6 +645,7 @@ export default function MemberPage() {
               allUnavailability={effectiveUnavailability} effectiveTentative={effectiveTentative}
               memberCount={allMembers.length} threshold={threshold} viewMode={displayMode}
               groupEvents={displayMode === 'personal' ? allMyGroupEvents : groupEvents}
+              declinedEventIds={displayMode === 'personal' ? declinedEventIds : null}
               onDayClick={handleDayClick} onLongPress={handleLongPress}
               onPrev={prevPeriod} onNext={nextPeriod} />
           : <YearView year={year} myUnavailable={myUnavailDates}
