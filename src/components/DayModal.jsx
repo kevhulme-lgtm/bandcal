@@ -1,6 +1,48 @@
 import { useState, useEffect } from 'react'
 import { X, Check } from './Icons'
 
+function downloadICS({ title, startDate, endDate, notes, startTime, endTime }) {
+  const uid = `${Date.now()}@lineup-app`
+  const now = new Date().toISOString().replace(/[-:.]/g, '').slice(0, 15) + 'Z'
+  const safeEnd = endDate || startDate
+
+  let dtStart, dtEnd
+  if (startTime) {
+    const [sh, sm] = startTime.split(':')
+    dtStart = `DTSTART:${startDate.replace(/-/g, '')}T${sh}${sm}00`
+    if (endTime) {
+      const [eh, em] = endTime.split(':')
+      dtEnd = `DTEND:${safeEnd.replace(/-/g, '')}T${eh}${em}00`
+    } else {
+      dtEnd = `DTEND:${startDate.replace(/-/g, '')}T${sh}${sm}00`
+    }
+  } else {
+    const after = new Date(safeEnd + 'T00:00:00')
+    after.setDate(after.getDate() + 1)
+    const afterStr = after.toISOString().slice(0, 10).replace(/-/g, '')
+    dtStart = `DTSTART;VALUE=DATE:${startDate.replace(/-/g, '')}`
+    dtEnd = `DTEND;VALUE=DATE:${afterStr}`
+  }
+
+  const lines = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Lineup//Lineup//EN',
+    'BEGIN:VEVENT',
+    `UID:${uid}`, `DTSTAMP:${now}`,
+    dtStart, dtEnd,
+    `SUMMARY:${title}`,
+    ...(notes ? [`DESCRIPTION:${notes.replace(/\r?\n/g, '\\n')}`] : []),
+    'END:VEVENT', 'END:VCALENDAR',
+  ]
+
+  const blob = new Blob([lines.join('\r\n')], { type: 'text/calendar;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${title.replace(/[^a-z0-9]/gi, '_')}.ics`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 const MONTHS_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December']
 const DAYS_FULL = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
 
@@ -157,6 +199,11 @@ export default function DayModal({
                   <h3 className="font-display text-2xl tracking-wider text-[#1a1a18] dark:text-[#e8e6e0]">{event.title}</h3>
                   <p className="text-xs text-[#999] mt-1">{groupEventHeaderLabel}</p>
                   {event.notes && <p className="font-body text-sm text-[#666] dark:text-[#999] mt-2 whitespace-pre-line">{event.notes}</p>}
+                  <button
+                    onClick={() => downloadICS({ title: event.title, startDate: event.start_date, endDate: event.end_date, notes: event.notes, startTime: event.start_time?.slice(0,5), endTime: event.end_time?.slice(0,5) })}
+                    className="mt-3 text-xs font-body text-[#888] hover:text-[#555] dark:hover:text-[#bbb] underline transition-colors">
+                    Add to calendar
+                  </button>
                 </div>
               )}
 
@@ -274,8 +321,8 @@ export default function DayModal({
                 </div>
               )}
 
-              {/* Member list */}
-              {!editingEvent && (
+              {/* Member list — only in group view */}
+              {!editingEvent && displayMode !== 'personal' && (
                 <>
                   <div className="h-px bg-black/10 dark:bg-white/10" />
                   <div className="space-y-4">
@@ -339,6 +386,11 @@ export default function DayModal({
                   )}
                   {personalEvent.notes && <p className="font-body text-sm text-[#666] dark:text-[#999] mt-2 whitespace-pre-line">{personalEvent.notes}</p>}
                   <p className="text-xs text-[#aaa] mt-2">Only you can see this. Your unavailability is shared with all your groups.</p>
+                  <button
+                    onClick={() => downloadICS({ title: personalEvent.title, startDate: personalEvent.date, endDate: personalEvent.end_date, notes: personalEvent.notes })}
+                    className="mt-3 text-xs font-body text-[#888] hover:text-[#555] dark:hover:text-[#bbb] underline transition-colors">
+                    Add to calendar
+                  </button>
                 </div>
               )}
 
